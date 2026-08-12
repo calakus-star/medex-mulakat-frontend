@@ -1,20 +1,21 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Header, Card, Input, Select, Button, Alert } from "../components/Layout";
+import { Card, Input, Select, Button, Alert, Icon, Badge, ChipButton, StatTile, Tabs, Table, Modal, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 import PositionManager from "./PositionManager";
 import WalkinPanel from "./WalkinPanel";
 
-const STATUS_LABELS = {
-  pending: { label: "Bekliyor", color: "#f59e0b", bg: "#fffbeb" },
-  completed: { label: "Tamamlandı", color: "#22c55e", bg: "#f0fdf4" },
-};
+const STATUS_TONE = { pending: "yellow", completed: "green" };
+const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
 
-const REC_COLORS = {
-  "İşe Al": "#22c55e",
-  "Değerlendirmeye Al": "#f59e0b",
-  "Reddet": "#ef4444",
+const REC_TONE = { "İşe Al": "green", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
+
+// backend/LEVELS.md ile senkron tutulmalı — level seçerken admine kısa bir yön verir.
+const LEVEL_INFO = {
+  1: "Level 1: Hızlı ön eleme. Metin bazlı, nötr/standart ton, CV opsiyonel.",
+  2: "Level 2: Sesli mülakat (OpenAI Realtime). Meslektaş tonu, orta derinlik, CV zorunlu.",
+  3: "Level 3: Kıdemli/kritik pozisyonlar için uçtan uca derinlemesine değerlendirme. Senior/direkt ton, süre sabit değil (adaptif), CV zorunlu.",
 };
 
 const formatScore = (value) => (value === null || value === undefined || value === "" ? "-" : `${value}/100`);
@@ -24,7 +25,6 @@ const normalizeRecommendation = (score, recommendation) => {
   const n = Number(score);
   if (Number.isNaN(n)) return recommendation || "-";
   if (n < 40) return "Reddet";
-  if (n < 60) return "Değerlendirmeye Al";
   if (n < 80) return "Değerlendirmeye Al";
   return "İşe Al";
 };
@@ -39,10 +39,10 @@ function ReportText({ text }) {
   const clean = stripMarkdown(text || "Rapor bulunamadı.");
   const lines = clean.split("\n").filter(Boolean);
   return (
-    <div style={{ background: "#f8fafc", borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.65, marginBottom: 20 }}>
+    <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.65, marginBottom: 20 }}>
       {lines.map((line, idx) => {
         const isTitle = line.endsWith(":") || line.startsWith("TOPLAM PUAN") || line.startsWith("Öneri:");
-        return <div key={idx} style={{ marginBottom: 6, fontWeight: isTitle ? 700 : 400, color: isTitle ? "#1e3a5f" : "#0f172a", whiteSpace: "pre-wrap" }}>{line}</div>;
+        return <div key={idx} style={{ marginBottom: 6, fontWeight: isTitle ? 700 : 400, color: isTitle ? colors.ink : colors.inkSoft, whiteSpace: "pre-wrap" }}>{line}</div>;
       })}
     </div>
   );
@@ -73,6 +73,7 @@ export default function AdminDashboard() {
         const list = (Array.isArray(res.data) ? res.data : []).filter(p => p.active);
         setPositionsRaw(list);
       });
+    // eslint-disable-next-line
   }, []);
 
   // Grup (kategori) -> Pozisyon bağımlı combo yardımcıları
@@ -88,7 +89,7 @@ export default function AdminDashboard() {
       const res = await axios.get(`${API_URL}/api/admin/candidates`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setCandidates(Array.isArray(res.data) ? res.data.filter(c => !c.is_archived) : []);
+      setCandidates(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
       if (e.response?.status === 401) { navigate("/admin"); }
     }
@@ -127,7 +128,7 @@ export default function AdminDashboard() {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }
         });
       }
-      setSuccess("✅ Aday bilgileri güncellendi.");
+      setSuccess("Aday bilgileri güncellendi.");
       cancelForm();
       setAdminCvFile(null);
       fetchCandidates();
@@ -151,9 +152,9 @@ export default function AdminDashboard() {
         });
       }
       if (res.data.mail_sent) {
-        setSuccess(`✅ Aday eklendi. Kullanıcı: ${res.data.username} | Şifre: ${res.data.password} | Davet maili gönderildi.`);
+        setSuccess(`Aday eklendi. Kullanıcı: ${res.data.username} | Şifre: ${res.data.password} | Davet maili gönderildi.`);
       } else {
-        setSuccess(`⚠️ Aday eklendi ama davet maili gönderilemedi. Kullanıcı: ${res.data.username} | Şifre: ${res.data.password} — bu bilgileri adaya manuel iletmeniz gerekiyor.`);
+        setSuccess(`Aday eklendi ama davet maili gönderilemedi. Kullanıcı: ${res.data.username} | Şifre: ${res.data.password} — bu bilgileri adaya manuel iletmeniz gerekiyor.`);
       }
       cancelForm();
       setAdminCvFile(null);
@@ -179,9 +180,9 @@ export default function AdminDashboard() {
         });
       }
       if (res.data.mail_sent) {
-        setSuccess(`✅ Yeni davet gönderildi. Kullanıcı: ${res.data.username} | Şifre: ${res.data.password}`);
+        setSuccess(`Yeni davet gönderildi. Kullanıcı: ${res.data.username} | Şifre: ${res.data.password}`);
       } else {
-        setSuccess(`⚠️ Yeni davet oluşturuldu ama mail gönderilemedi. Kullanıcı: ${res.data.username} | Şifre: ${res.data.password} — bu bilgileri adaya manuel iletmeniz gerekiyor.`);
+        setSuccess(`Yeni davet oluşturuldu ama mail gönderilemedi. Kullanıcı: ${res.data.username} | Şifre: ${res.data.password} — bu bilgileri adaya manuel iletmeniz gerekiyor.`);
       }
       cancelForm();
       setAdminCvFile(null);
@@ -254,7 +255,7 @@ export default function AdminDashboard() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data.mail_sent) {
-        setSuccess(`✅ Mail tekrar gönderildi. Kullanıcı: ${res.data.username}`);
+        setSuccess(`Mail tekrar gönderildi. Kullanıcı: ${res.data.username}`);
       } else {
         setCredModal({ username: res.data.username, password: res.data.password });
       }
@@ -293,7 +294,7 @@ export default function AdminDashboard() {
       await axios.delete(`${API_URL}/api/admin/candidates/${candidateId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess(`✅ ${name} silindi`);
+      setSuccess(`${name} silindi`);
       fetchCandidates();
     } catch (e) {
       setError("Silme işlemi başarısız");
@@ -305,7 +306,7 @@ export default function AdminDashboard() {
       const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/allow-reapply`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess(res.data.reapply_allowed ? "✅ Tekrar başvuru izni açıldı" : "✅ Tekrar başvuru izni kapatıldı");
+      setSuccess(res.data.reapply_allowed ? "Tekrar başvuru izni açıldı" : "Tekrar başvuru izni kapatıldı");
       fetchCandidates();
     } catch (e) {
       setError(e.response?.data?.detail || "Tekrar başvuru izni güncellenemedi");
@@ -320,55 +321,36 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f4f8", padding: 24 }}>
-      <div style={{ maxWidth: 1000, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <div style={{ background: "#1e3a5f", padding: "12px 24px", borderRadius: 12, flex: 1, marginRight: 16 }}>
-            <div style={{ color: "#7eb8f7", fontSize: 11, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase" }}>MedeX SMO</div>
+    <div style={{ minHeight: "100vh", background: colors.bg, padding: "20px 16px" }}>
+      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+          <div style={{ background: colors.ink, padding: "12px 22px", borderRadius: 10, flex: "1 1 240px" }}>
+            <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 11, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase" }}>MedeX SMO</div>
             <div style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>Admin Paneli</div>
           </div>
           <Button variant="secondary" onClick={() => { localStorage.removeItem("admin_token"); navigate("/admin"); }}>
-            Çıkış
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="logout" size={14} />Çıkış</span>
           </Button>
         </div>
 
         {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
-          {[
-            { label: "Toplam Aday", value: stats.total, color: "#1e3a5f" },
-            { label: "Bekleyen", value: stats.pending, color: "#f59e0b" },
-            { label: "Tamamlanan", value: stats.completed, color: "#22c55e" },
-            { label: "İşe Al Önerisi", value: stats.hireCount, color: "#7eb8f7" },
-          ].map((s, i) => (
-            <Card key={i} style={{ textAlign: "center", padding: 16 }}>
-              <div style={{ fontSize: 32, fontWeight: 700, color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{s.label}</div>
-            </Card>
-          ))}
+        <div className="admin-stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 }}>
+          <StatTile label="Toplam Aday" value={stats.total} iconName="users" />
+          <StatTile label="Bekleyen" value={stats.pending} iconName="history" />
+          <StatTile label="Tamamlanan" value={stats.completed} iconName="check" />
+          <StatTile label="İşe Al Önerisi" value={stats.hireCount} iconName="sparkle" />
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          {[
-            { key: "candidates", label: "Adaylar" },
-            { key: "positions", label: "Pozisyonlar" },
-            { key: "walkin", label: "Hızlı Giriş" },
-          ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                background: tab === t.key ? "#1e3a5f" : "#fff",
-                color: tab === t.key ? "#fff" : "#1e3a5f",
-                border: tab === t.key ? "none" : "2px solid #e2e8f0",
-                borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 600,
-                cursor: "pointer"
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          active={tab}
+          onChange={setTab}
+          items={[
+            { key: "candidates", label: "Adaylar", iconName: "users" },
+            { key: "positions", label: "Pozisyonlar", iconName: "briefcase" },
+            { key: "walkin", label: "Hızlı Giriş", iconName: "plus" },
+          ]}
+        />
 
         {tab === "positions" && <PositionManager token={token} />}
         {tab === "walkin" && <WalkinPanel token={token} />}
@@ -378,15 +360,18 @@ export default function AdminDashboard() {
         {error && <Alert>{error}</Alert>}
 
         {/* Add candidate */}
-        <Card style={{ marginBottom: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showForm ? 20 : 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: "#1e3a5f" }}>{editingId ? "Aday Düzenle" : "Aday Davet Et"}</div>
+        <Card style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showForm ? 20 : 0, flexWrap: "wrap", gap: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink }}>{editingId ? "Aday Düzenle" : "Aday Davet Et"}</div>
             <Button onClick={() => showForm ? cancelForm() : setShowForm(true)}>
-              {showForm ? "İptal" : "+ Yeni Aday"}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Icon name={showForm ? "close" : "plus"} size={14} />
+                {showForm ? "İptal" : "Yeni Aday"}
+              </span>
             </Button>
           </div>
           {showForm && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="admin-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Input label="Ad Soyad" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ahmet Yılmaz" />
               <Input label="E-posta" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="ahmet@email.com" />
               <Input label="Telefon (opsiyonel)" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="05xx xxx xx xx" />
@@ -423,44 +408,36 @@ export default function AdminDashboard() {
                 value={form.depth_tier}
                 onChange={e => setForm({ ...form, depth_tier: e.target.value })}
               />
+              <div style={{ gridColumn: "1 / -1", fontSize: 12, color: colors.inkSoft, background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: 6, padding: "8px 10px" }}>
+                {LEVEL_INFO[form.level] || LEVEL_INFO[1]}
+              </div>
               {form.level >= 2 && !adminCvFile && !editingId && (
-                <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#b45309", background: "#fef9e7", border: "1px solid #f59e0b", borderRadius: 6, padding: "8px 10px" }}>
+                <div style={{ gridColumn: "1 / -1", fontSize: 12, color: colors.yellow, background: colors.yellowBg, border: `1px solid ${colors.yellowBorder}`, borderRadius: 6, padding: "8px 10px" }}>
                   Bu seviyede aday CV yüklemeden mülakata başlayamaz. Adayı davet ederken CV'yi buradan yükleyebilir veya adayın kendi yüklemesini bekleyebilirsiniz.
                 </div>
               )}
               <Select
                 label="Mülakat Dili"
-                options={[
-                  { value: "tr", label: "Türkçe" },
-                  { value: "en", label: "İngilizce" },
-                  { value: "de", label: "Almanca" },
-                ]}
+                options={[{ value: "tr", label: "Türkçe" }, { value: "en", label: "İngilizce" }, { value: "de", label: "Almanca" }]}
                 value={form.interview_language}
                 onChange={e => setForm({ ...form, interview_language: e.target.value })}
               />
               <Select
                 label="Rapor Dili"
-                options={[
-                  { value: "tr", label: "Türkçe" },
-                  { value: "en", label: "İngilizce" },
-                  { value: "de", label: "Almanca" },
-                ]}
+                options={[{ value: "tr", label: "Türkçe" }, { value: "en", label: "İngilizce" }, { value: "de", label: "Almanca" }]}
                 value={form.report_language}
                 onChange={e => setForm({ ...form, report_language: e.target.value })}
               />
               {form.interview_language !== form.report_language && (
-                <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#1e40af", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "8px 10px" }}>
+                <div style={{ gridColumn: "1 / -1", fontSize: 12, color: colors.blue, background: colors.blueBg, border: `1px solid ${colors.blueBorder}`, borderRadius: 6, padding: "8px 10px" }}>
                   Not: Mülakat {form.interview_language === "tr" ? "Türkçe" : form.interview_language === "en" ? "İngilizce" : "Almanca"} yapılacak, ama rapor {form.report_language === "tr" ? "Türkçe" : form.report_language === "en" ? "İngilizce" : "Almanca"} yazılacak.
                 </div>
               )}
               <Select
                 label="Eğitim Seviyesi"
                 options={[
-                  { value: "Lise", label: "Lise" },
-                  { value: "Ön Lisans", label: "Ön Lisans" },
-                  { value: "Lisans", label: "Lisans" },
-                  { value: "Yüksek Lisans", label: "Yüksek Lisans" },
-                  { value: "Doktora", label: "Doktora" },
+                  { value: "Lise", label: "Lise" }, { value: "Ön Lisans", label: "Ön Lisans" }, { value: "Lisans", label: "Lisans" },
+                  { value: "Yüksek Lisans", label: "Yüksek Lisans" }, { value: "Doktora", label: "Doktora" },
                 ]}
                 value={form.education}
                 onChange={e => setForm({ ...form, education: e.target.value })}
@@ -469,20 +446,20 @@ export default function AdminDashboard() {
               <Input label="Bölüm" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} placeholder="Bölüm" />
               <Input label="Deneyim yılı" type="number" min="0" value={form.experience_years} onChange={e => setForm({ ...form, experience_years: e.target.value })} />
               <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 6 }}>CV (opsiyonel)</label>
-                <input type="file" accept=".pdf,.docx" onChange={e => setAdminCvFile(e.target.files?.[0] || null)} style={{ width: "100%", padding: 12, borderRadius: 8, border: "2px solid #e2e8f0" }} />
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>CV (opsiyonel)</label>
+                <input type="file" accept=".pdf,.docx" onChange={e => setAdminCvFile(e.target.files?.[0] || null)} style={{ width: "100%", padding: 11, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: FONT, boxSizing: "border-box" }} />
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 6 }}>AI Notu / Özel Talimat (aday görmez)</label>
-                <textarea rows={3} value={form.ai_note} onChange={e => setForm({ ...form, ai_note: e.target.value })} placeholder="Örn. İngilizceyi özellikle ölç. Bu aday değerli, öğrenme potansiyeline ağırlık ver. CV'deki Medidata deneyimini doğrula." style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "2px solid #e2e8f0", fontSize: 14, fontFamily: "Inter, sans-serif", resize: "vertical" }} />
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>AI Notu / Özel Talimat (aday görmez)</label>
+                <textarea rows={3} value={form.ai_note} onChange={e => setForm({ ...form, ai_note: e.target.value })} placeholder="Örn. İngilizceyi özellikle ölç. Bu aday değerli, öğrenme potansiyeline ağırlık ver. CV'deki Medidata deneyimini doğrula." style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, resize: "vertical", boxSizing: "border-box" }} />
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <Button disabled={loading || !form.name || (!editingId && !form.email) || !form.position} onClick={editingId ? updateCandidate : createCandidate} style={{ width: "100%" }}>
                   {loading ? "Kaydediliyor..." : editingId ? "Değişiklikleri Kaydet" : "Aday Ekle & Davet Gönder"}
                 </Button>
                 {editingId && (
-                  <Button disabled={loading || !form.name || !form.email || !form.position} onClick={resendAsNew} style={{ width: "100%", marginTop: 8, background: "#0f766e" }}>
-                    {loading ? "Gönderiliyor..." : "📨 Tekrar Davet Gönder (Yeni Kullanıcı & Şifre)"}
+                  <Button disabled={loading || !form.name || !form.email || !form.position} onClick={resendAsNew} variant="secondary" style={{ width: "100%", marginTop: 8 }}>
+                    {loading ? "Gönderiliyor..." : "Tekrar Davet Gönder (Yeni Kullanıcı & Şifre)"}
                   </Button>
                 )}
               </div>
@@ -492,254 +469,223 @@ export default function AdminDashboard() {
 
         {/* Candidates list */}
         <Card>
-          <div style={{ fontWeight: 700, fontSize: 16, color: "#1e3a5f", marginBottom: 16 }}>Adaylar</div>
+          <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink, marginBottom: 16 }}>Adaylar</div>
           {candidates.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#64748b", padding: 40 }}>Henüz aday yok</div>
+            <div style={{ textAlign: "center", color: colors.muted, padding: 40 }}>Henüz aday yok</div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: "#f8fafc" }}>
-                    {["Ad Soyad", "Telefon", "Pozisyon", "Eğitim/CV", "Tür", "Durum", "Skor", "Öneri", "İşlem"].map(h => (
-                      <th key={h} style={{ padding: "10px 12px", textAlign: "left", color: "#1e3a5f", fontWeight: 600, borderBottom: "2px solid #e2e8f0" }}>{h}</th>
-                    ))}
+            <Table columns={["Ad Soyad", "Telefon", "Pozisyon", "Eğitim/CV", "Tür", "Durum", "Skor", "Öneri", "İşlem"]}>
+              {candidates.map(c => {
+                return (
+                  <tr key={c.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td style={{ padding: "12px" }}>
+                      <div style={{ fontWeight: 600, color: colors.ink }}>{c.name}</div>
+                      <div style={{ fontSize: 12, color: colors.muted }}>{c.email || "-"}</div>
+                    </td>
+                    <td style={{ padding: "12px", fontSize: 13, whiteSpace: "nowrap" }}>
+                      {c.phone ? <a href={`tel:${c.phone}`} style={{ color: colors.ink, fontWeight: 600, textDecoration: "none" }}>{c.phone}</a> : "-"}
+                      {c.phone && <div><a href={`https://wa.me/${c.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: colors.green, textDecoration: "none" }}>WhatsApp</a></div>}
+                    </td>
+                    <td style={{ padding: "12px", fontSize: 13 }}>{c.position}</td>
+                    <td style={{ padding: "12px", fontSize: 12, color: colors.inkSoft }}>
+                      <div>{c.education || "-"}</div>
+                      {c.university && <div>{c.university}</div>}
+                      {c.department && <div>{c.department}</div>}
+                      <div style={{ marginTop: 4, color: c.cv_filename ? colors.green : colors.mutedLight, fontWeight: 600 }}>{c.cv_filename ? "CV var" : "CV yok"}</div>
+                      {c.ai_note && <div style={{ marginTop: 4, color: colors.purple, fontWeight: 600 }}>AI notu var</div>}
+                    </td>
+                    <td style={{ padding: "12px" }}>
+                      <Badge tone={c.invite_type === "invite" ? "blue" : c.invite_type === "walkin" ? "purple" : "green"}>
+                        {c.invite_type === "invite" ? "Davetli" : c.invite_type === "walkin" ? "Hızlı Giriş" : "Genel"}
+                      </Badge>
+                    </td>
+                    <td style={{ padding: "12px" }}>
+                      <Badge tone={STATUS_TONE[c.status] || "yellow"}>{STATUS_LABELS[c.status] || c.status}</Badge>
+                      {c.terminated_reason && (
+                        <div style={{ fontSize: 11, color: colors.red, marginTop: 4 }}>İhlal nedeniyle sonlandı</div>
+                      )}
+                      {c.is_archived ? <div style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>Eski başvuru</div> : null}
+                      {c.reapply_allowed ? <div style={{ fontSize: 11, color: colors.green, marginTop: 4 }}>Tekrar başvuru açık</div> : null}
+                    </td>
+                    <td style={{ padding: "12px", fontWeight: 700, color: colors.ink }}>
+                      {formatScore(c.score)}
+                      {(c.total_input_tokens || c.total_output_tokens) ? (
+                        <div style={{ fontSize: 10, fontWeight: 500, color: colors.mutedLight, marginTop: 2 }}>
+                          {((c.total_input_tokens || 0) + (c.total_output_tokens || 0)).toLocaleString("tr-TR")} token
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={{ padding: "12px" }}>
+                      {(() => {
+                        const rec = normalizeRecommendation(c.score, c.recommendation);
+                        return rec !== "-" ? <Badge tone={REC_TONE[rec] || "neutral"}>{rec}</Badge> : "-";
+                      })()}
+                    </td>
+                    <td style={{ padding: "12px" }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {c.status === "completed" && (
+                          <ChipButton tone="neutral" iconName="file" onClick={() => viewReport(c.id)}>Rapor</ChipButton>
+                        )}
+                        {c.status === "pending" && (
+                          <>
+                            <ChipButton tone="blue" iconName="refresh" onClick={() => resendInvite(c.id)} title="Maili tekrar gönder">Tekrar Gönder</ChipButton>
+                            <ChipButton tone="green" iconName="eye" onClick={() => showCredentials(c.id)} title="Mevcut bilgileri ekranda göster">Göster</ChipButton>
+                            <ChipButton tone="yellow" iconName="key" onClick={() => resetPassword(c.id)} title="Şifreyi sıfırla (yeni şifre üretir)">Şifre Sıfırla</ChipButton>
+                          </>
+                        )}
+                        {c.person_id && (
+                          <ChipButton tone="blue" iconName="history" onClick={() => navigate(`/admin/panel/person/${c.person_id}`)} title="Bu kişinin tüm mülakat geçmişini gör">Geçmiş</ChipButton>
+                        )}
+                        <ChipButton tone="purple" iconName="edit" onClick={() => startEdit(c)} title="Aday bilgilerini / AI notunu düzenle">Düzenle</ChipButton>
+                        <ChipButton tone={c.reapply_allowed ? "green" : "neutral"} onClick={() => toggleReapply(c.id)} title="Adayın aynı e-posta ile yeniden başvurmasına izin ver/kapat">
+                          {c.reapply_allowed ? "İzni Kapat" : "Tekrar İzin"}
+                        </ChipButton>
+                        <ChipButton tone="red" iconName="trash" onClick={() => deleteCandidate(c.id, c.name)} title="Adayı sil">Sil</ChipButton>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {candidates.map(c => {
-                    const st = STATUS_LABELS[c.status] || STATUS_LABELS.pending;
-                    return (
-                      <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                        <td style={{ padding: "12px" }}>
-                          <div style={{ fontWeight: 600 }}>{c.name}</div>
-                          <div style={{ fontSize: 12, color: "#64748b" }}>{c.email || "-"}</div>
-                        </td>
-                        <td style={{ padding: "12px", fontSize: 13, whiteSpace: "nowrap" }}>
-                          {c.phone ? <a href={`tel:${c.phone}`} style={{ color: "#1e3a5f", fontWeight: 600, textDecoration: "none" }}>{c.phone}</a> : "-"}
-                          {c.phone && <div><a href={`https://wa.me/${c.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#22c55e", textDecoration: "none" }}>WhatsApp</a></div>}
-                        </td>
-                        <td style={{ padding: "12px", fontSize: 13 }}>{c.position}</td>
-                        <td style={{ padding: "12px", fontSize: 12, color: "#475569" }}>
-                          <div>{c.education || "-"}</div>
-                          {c.university && <div>{c.university}</div>}
-                          {c.department && <div>{c.department}</div>}
-                          <div style={{ marginTop: 4, color: c.cv_filename ? "#22c55e" : "#94a3b8", fontWeight: 600 }}>{c.cv_filename ? "CV var" : "CV yok"}</div>
-                          {c.ai_note && <div style={{ marginTop: 4, color: "#7c3aed", fontWeight: 600 }}>AI notu var</div>}
-                        </td>
-                        <td style={{ padding: "12px" }}>
-                          <span style={{ fontSize: 12, background: c.invite_type === "invite" ? "#eff6ff" : "#f0fdf4", color: c.invite_type === "invite" ? "#1e3a5f" : "#22c55e", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
-                            {c.invite_type === "invite" ? "Davetli" : "Genel"}
-                          </span>
-                        </td>
-                        <td style={{ padding: "12px" }}>
-                          <span style={{ fontSize: 12, background: st.bg, color: st.color, padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
-                            {st.label}
-                          </span>
-                          {c.terminated_reason && (
-                            <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>⚠️ İhlal nedeniyle sonlandı</div>
-                          )}
-                          {c.is_archived ? <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Eski başvuru</div> : null}
-                          {c.reapply_allowed ? <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>Tekrar başvuru açık</div> : null}
-                        </td>
-                        <td style={{ padding: "12px", fontWeight: 700, color: "#1e3a5f" }}>
-                          {formatScore(c.score)}
-                          {(c.total_input_tokens || c.total_output_tokens) ? (
-                            <div style={{ fontSize: 10, fontWeight: 500, color: "#94a3b8", marginTop: 2 }}>
-                              {((c.total_input_tokens || 0) + (c.total_output_tokens || 0)).toLocaleString("tr-TR")} token
-                            </div>
-                          ) : null}
-                        </td>
-                        <td style={{ padding: "12px" }}>
-                          {(() => {
-                            const rec = normalizeRecommendation(c.score, c.recommendation);
-                            return rec !== "-" ? <span style={{ fontSize: 12, color: REC_COLORS[rec] || "#64748b", fontWeight: 600 }}>{rec}</span> : "-";
-                          })()}
-                        </td>
-                        <td style={{ padding: "12px" }}>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {c.status === "completed" && (
-                              <>
-                                <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => viewReport(c.id)}>
-                                  Rapor
-                                </Button>
-                              </>
-                            )}
-                            {c.status === "pending" && (
-                              <>
-                                <button onClick={() => resendInvite(c.id)} title="Maili tekrar gönder"
-                                  style={{ background: "#eff6ff", color: "#1e3a5f", border: "none", borderRadius: 6, padding: "6px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                                  ↻ Tekrar Gönder
-                                </button>
-                                <button onClick={() => showCredentials(c.id)} title="Mevcut bilgileri ekranda göster"
-                                  style={{ background: "#f0fdf4", color: "#22c55e", border: "none", borderRadius: 6, padding: "6px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                                  👁 Göster
-                                </button>
-                                <button onClick={() => resetPassword(c.id)} title="Şifreyi sıfırla (yeni şifre üretir)"
-                                  style={{ background: "#fff7ed", color: "#f59e0b", border: "none", borderRadius: 6, padding: "6px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                                  🔄 Şifre Sıfırla
-                                </button>
-                              </>
-                            )}
-                            <button onClick={() => startEdit(c)} title="Aday bilgilerini / AI notunu düzenle"
-                              style={{ background: "#f5f3ff", color: "#7c3aed", border: "none", borderRadius: 6, padding: "6px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                              ✏️ Düzenle
-                            </button>
-                            <button onClick={() => toggleReapply(c.id)} title="Adayın aynı e-posta ile yeniden başvurmasına izin ver/kapat"
-                              style={{ background: c.reapply_allowed ? "#dcfce7" : "#eef2ff", color: c.reapply_allowed ? "#166534" : "#3730a3", border: "none", borderRadius: 6, padding: "6px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                              {c.reapply_allowed ? "İzni Kapat" : "Tekrar İzin"}
-                            </button>
-                            <button onClick={() => deleteCandidate(c.id, c.name)} title="Adayı sil"
-                              style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 6, padding: "6px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                              Sil
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                );
+              })}
+            </Table>
           )}
         </Card>
 
         {/* Report Modal */}
         {selectedReport && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}>
-            <div style={{ background: "#fff", borderRadius: 12, padding: 32, maxWidth: 700, width: "100%", maxHeight: "80vh", overflowY: "auto" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 20 }}>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#1e3a5f" }}>Mülakat Raporu</div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                    {selectedReport.name} · {selectedReport.email || "E-posta yok"} · {selectedReport.phone || "Telefon yok"}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
-                    Eğitim: {selectedReport.education || "-"} · Üniversite: {selectedReport.university || "-"} · Bölüm: {selectedReport.department || "-"} · Deneyim: {selectedReport.experience_years ?? 0} yıl
-                  </div>
+          <Modal onClose={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} maxWidth={720}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 20 }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: colors.ink }}>Mülakat Raporu</div>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+                  {selectedReport.name} · {selectedReport.email || "E-posta yok"} · {selectedReport.phone || "Telefon yok"}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadPdf(selectedReport.candidate_id, selectedReport.name)}>
-                    PDF İndir
-                  </Button>
-                  <button onClick={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer" }}>✕</button>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
+                  Eğitim: {selectedReport.education || "-"} · Üniversite: {selectedReport.university || "-"} · Bölüm: {selectedReport.department || "-"} · Deneyim: {selectedReport.experience_years ?? 0} yıl
                 </div>
               </div>
-              {modalError && <Alert>{modalError}</Alert>}
-              <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontWeight: 700, color: "#1e3a5f", marginBottom: 10, fontSize: 14 }}>Mülakat Sırasında Alınan Kareler ({snapshots.length}/4)</div>
-                  {snapshots.length === 0 && <div style={{ color: "#64748b", fontSize: 13, marginBottom: 8 }}>Henüz kayıtlı kamera karesi yok.</div>}
-                  {snapshots.length > 0 && (
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    {snapshots.map(s => (
-                      <img key={s.id} src={s.image_base64} alt="mülakat karesi"
-                        style={{ width: 110, height: 82, objectFit: "cover", borderRadius: 6, border: "1px solid #e2e8f0" }} />
-                    ))}
-                  </div>
-                  )}
-                </div>
-              <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-                <div style={{ background: "#f8fafc", borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "#1e3a5f" }}>{selectedReport.score ?? "-"}</div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>/ 100</div>
-                </div>
-                <div style={{ background: "#f8fafc", borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: REC_COLORS[normalizeRecommendation(selectedReport.score, selectedReport.recommendation)] || "#64748b" }}>
-                    {normalizeRecommendation(selectedReport.score, selectedReport.recommendation)}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Öneri</div>
-                </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadPdf(selectedReport.candidate_id, selectedReport.name)}>
+                  PDF İndir
+                </Button>
+                <button onClick={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted }}>
+                  <Icon name="close" size={20} />
+                </button>
               </div>
-
-              {selectedReport.usage_logs && selectedReport.usage_logs.length > 0 && (
-                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 14, marginBottom: 20 }}>
-                  <div style={{ fontWeight: 700, color: "#1e3a5f", marginBottom: 10 }}>AI Kullanım Logu</div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
-                    Toplam: {(selectedReport.usage_total_tokens || 0).toLocaleString("tr-TR")} token
-                    {" · "}
-                    <span style={{ fontWeight: 700, color: "#0f172a" }}>
-                      ~${(selectedReport.usage_total_cost_usd || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                    </span>
-                    <span style={{ color: "#94a3b8" }}> (tahmini — fatura değil; ses token'ları metinden çok daha pahalı olduğu için toplam token sayısı tek başına maliyeti göstermez)</span>
-                  </div>
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                      <thead>
-                        <tr style={{ color: "#475569", textAlign: "left" }}>
-                          <th style={{ padding: 6, borderBottom: "1px solid #e2e8f0" }}>İşlem</th>
-                          <th style={{ padding: 6, borderBottom: "1px solid #e2e8f0" }}>Model</th>
-                          <th style={{ padding: 6, borderBottom: "1px solid #e2e8f0" }}>Text In</th>
-                          <th style={{ padding: 6, borderBottom: "1px solid #e2e8f0" }}>Text Out</th>
-                          <th style={{ padding: 6, borderBottom: "1px solid #e2e8f0" }}>Audio In</th>
-                          <th style={{ padding: 6, borderBottom: "1px solid #e2e8f0" }}>Audio Out</th>
-                          <th style={{ padding: 6, borderBottom: "1px solid #e2e8f0" }}>Toplam</th>
-                          <th style={{ padding: 6, borderBottom: "1px solid #e2e8f0" }}>~$</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedReport.usage_logs.map((u, idx) => (
-                          <tr key={idx}>
-                            <td style={{ padding: 6, borderBottom: "1px solid #eef2f7" }}>{u.action}</td>
-                            <td style={{ padding: 6, borderBottom: "1px solid #eef2f7" }}>{u.model}</td>
-                            <td style={{ padding: 6, borderBottom: "1px solid #eef2f7" }}>{(u.input_tokens || 0).toLocaleString("tr-TR")}</td>
-                            <td style={{ padding: 6, borderBottom: "1px solid #eef2f7" }}>{(u.output_tokens || 0).toLocaleString("tr-TR")}</td>
-                            <td style={{ padding: 6, borderBottom: "1px solid #eef2f7" }}>{(u.audio_input_tokens || 0).toLocaleString("tr-TR")}</td>
-                            <td style={{ padding: 6, borderBottom: "1px solid #eef2f7" }}>{(u.audio_output_tokens || 0).toLocaleString("tr-TR")}</td>
-                            <td style={{ padding: 6, borderBottom: "1px solid #eef2f7", fontWeight: 700 }}>{(u.total_tokens || 0).toLocaleString("tr-TR")}</td>
-                            <td style={{ padding: 6, borderBottom: "1px solid #eef2f7", fontWeight: 700, color: "#b45309" }}>${(u.estimated_cost_usd || 0).toFixed(4)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-              <ReportText text={selectedReport.report} />
-              {selectedReport.ai_note && (
-                <>
-                  <div style={{ fontWeight: 700, color: "#1e3a5f", marginBottom: 10 }}>AI Notu / Özel Talimat</div>
-                  <pre style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
-                    {selectedReport.ai_note}
-                  </pre>
-                </>
-              )}
-              {selectedReport.cv_text && (
-                <>
-                  <div style={{ fontWeight: 700, color: "#1e3a5f", marginBottom: 10 }}>Adayın Yüklediği CV {selectedReport.cv_filename ? `(${selectedReport.cv_filename})` : ""}</div>
-                  <pre style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7, maxHeight: 260, overflowY: "auto" }}>
-                    {selectedReport.cv_text}
-                  </pre>
-                </>
-              )}
-              {selectedReport.standard_cv && (
-                <>
-                  <div style={{ fontWeight: 700, color: "#1e3a5f", marginBottom: 10 }}>Standart CV</div>
-                  <pre style={{ background: "#f8fafc", borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
-                    {selectedReport.standard_cv}
-                  </pre>
-                </>
-              )}
             </div>
-          </div>
+            {modalError && <Alert>{modalError}</Alert>}
+            <div style={{ marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10, fontSize: 14 }}>Mülakat Sırasında Alınan Kareler ({snapshots.length}/4)</div>
+                {snapshots.length === 0 && <div style={{ color: colors.muted, fontSize: 13, marginBottom: 8 }}>Henüz kayıtlı kamera karesi yok.</div>}
+                {snapshots.length > 0 && (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {snapshots.map(s => (
+                    <img key={s.id} src={s.image_base64} alt="mülakat karesi"
+                      style={{ width: 110, height: 82, objectFit: "cover", borderRadius: 6, border: `1px solid ${colors.border}` }} />
+                  ))}
+                </div>
+                )}
+              </div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+              <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                <div style={{ fontSize: 26, fontWeight: 700, color: colors.ink }}>{selectedReport.score ?? "-"}</div>
+                <div style={{ fontSize: 12, color: colors.muted }}>/ 100</div>
+              </div>
+              <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                <Badge tone={REC_TONE[normalizeRecommendation(selectedReport.score, selectedReport.recommendation)] || "neutral"}>
+                  {normalizeRecommendation(selectedReport.score, selectedReport.recommendation)}
+                </Badge>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Öneri</div>
+              </div>
+            </div>
+
+            {selectedReport.usage_logs && selectedReport.usage_logs.length > 0 && (
+              <div style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 14, marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>AI Kullanım Logu</div>
+                <div style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>
+                  Toplam: {(selectedReport.usage_total_tokens || 0).toLocaleString("tr-TR")} token
+                  {" · "}
+                  <span style={{ fontWeight: 700, color: colors.ink }}>
+                    ~${(selectedReport.usage_total_cost_usd || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  </span>
+                  <span style={{ color: colors.mutedLight }}> (tahmini — fatura değil; ses token'ları metinden çok daha pahalı olduğu için toplam token sayısı tek başına maliyeti göstermez)</span>
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ color: colors.inkSoft, textAlign: "left" }}>
+                        <th style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>İşlem</th>
+                        <th style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>Model</th>
+                        <th style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>Text In</th>
+                        <th style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>Text Out</th>
+                        <th style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>Audio In</th>
+                        <th style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>Audio Out</th>
+                        <th style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>Toplam</th>
+                        <th style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>~$</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedReport.usage_logs.map((u, idx) => (
+                        <tr key={idx}>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>{u.action}</td>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>{u.model}</td>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>{(u.input_tokens || 0).toLocaleString("tr-TR")}</td>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>{(u.output_tokens || 0).toLocaleString("tr-TR")}</td>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>{(u.audio_input_tokens || 0).toLocaleString("tr-TR")}</td>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${colors.border}` }}>{(u.audio_output_tokens || 0).toLocaleString("tr-TR")}</td>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${colors.border}`, fontWeight: 700 }}>{(u.total_tokens || 0).toLocaleString("tr-TR")}</td>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${colors.border}`, fontWeight: 700, color: colors.yellow }}>${(u.estimated_cost_usd || 0).toFixed(4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            <ReportText text={selectedReport.report} />
+            {selectedReport.ai_note && (
+              <>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>AI Notu / Özel Talimat</div>
+                <pre style={{ background: colors.purpleBg, border: `1px solid ${colors.purpleBorder}`, borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7, fontFamily: FONT }}>
+                  {selectedReport.ai_note}
+                </pre>
+              </>
+            )}
+            {selectedReport.cv_text && (
+              <>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>Adayın Yüklediği CV {selectedReport.cv_filename ? `(${selectedReport.cv_filename})` : ""}</div>
+                <pre style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7, maxHeight: 260, overflowY: "auto", fontFamily: FONT }}>
+                  {selectedReport.cv_text}
+                </pre>
+              </>
+            )}
+            {selectedReport.standard_cv && (
+              <>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>Standart CV</div>
+                <pre style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7, fontFamily: FONT }}>
+                  {selectedReport.standard_cv}
+                </pre>
+              </>
+            )}
+          </Modal>
         )}
 
         {credModal && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}>
-            <div style={{ background: "#fff", borderRadius: 12, padding: 32, maxWidth: 400, width: "100%", textAlign: "center" }}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#1e3a5f", marginBottom: 8 }}>Giriş Bilgileri</div>
-              <div style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>Mail gönderilemedi veya manuel iletmek istiyorsanız bu bilgileri kullanın.</div>
-              <div style={{ background: "#f8fafc", borderRadius: 8, padding: 20, marginBottom: 20 }}>
+          <Modal onClose={() => setCredModal(null)} maxWidth={400}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: colors.ink, marginBottom: 8 }}>Giriş Bilgileri</div>
+              <div style={{ fontSize: 13, color: colors.muted, marginBottom: 20 }}>Mail gönderilemedi veya manuel iletmek istiyorsanız bu bilgileri kullanın.</div>
+              <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 20, marginBottom: 20 }}>
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Kullanıcı Adı</div>
-                  <div style={{ fontWeight: 700, fontSize: 18, color: "#1e3a5f" }}>{credModal.username}</div>
+                  <div style={{ fontSize: 12, color: colors.muted }}>Kullanıcı Adı</div>
+                  <div style={{ fontWeight: 700, fontSize: 18, color: colors.ink }}>{credModal.username}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Şifre</div>
-                  <div style={{ fontWeight: 700, fontSize: 18, color: "#1e3a5f" }}>{credModal.password}</div>
+                  <div style={{ fontSize: 12, color: colors.muted }}>Şifre</div>
+                  <div style={{ fontWeight: 700, fontSize: 18, color: colors.ink }}>{credModal.password}</div>
                 </div>
               </div>
               <Button onClick={() => setCredModal(null)} style={{ width: "100%" }}>Kapat</Button>
             </div>
-          </div>
+          </Modal>
         )}
         </>
         )}

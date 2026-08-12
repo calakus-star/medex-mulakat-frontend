@@ -1,13 +1,23 @@
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
-body { margin: 0; -webkit-font-smoothing: antialiased; }
+body { margin: 0; -webkit-font-smoothing: antialiased; background: #f7f7f8; }
 textarea, input, select, button { max-width: 100%; }
+
+@media (max-width: 900px) {
+  .admin-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
 @media (max-width: 720px) {
   .apply-grid { grid-template-columns: 1fr !important; }
+  .admin-form-grid { grid-template-columns: 1fr !important; }
+  .person-info-grid { grid-template-columns: 1fr !important; }
+  .criteria-row { grid-template-columns: 1fr !important; }
   table { min-width: 860px; }
   .camera-preview { height: 120px !important; }
 }
+@media (max-width: 560px) {
+  .admin-stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+}
 @media (max-width: 480px) {
-  body { background: #f0f4f8; }
+  body { background: #f7f7f8; }
   .camera-preview { height: 150px !important; }
 }

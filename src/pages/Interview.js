@@ -2,12 +2,7 @@ import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "../App";
-
-const colors = {
-  navy: "#1e3a5f", navyLight: "#2d5a8e", blue: "#7eb8f7", bg: "#f0f4f8",
-  white: "#ffffff", slate: "#64748b", border: "#e2e8f0",
-  green: "#22c55e", yellow: "#f59e0b", red: "#ef4444",
-};
+import { colors } from "../components/Layout";
 
 const formatTime = (s) => {
   const safe = Math.max(0, s || 0);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Card, Input, Select, Button, Alert } from "../components/Layout";
+import { Card, Input, Select, Button, Alert, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
 export default function WalkinPanel({ token }) {
@@ -41,8 +41,8 @@ export default function WalkinPanel({ token }) {
 
   return (
     <Card>
-      <div style={{ fontWeight: 700, fontSize: 16, color: "#1e3a5f", marginBottom: 4 }}>Hızlı Giriş (Walk-in)</div>
-      <div style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink, marginBottom: 4 }}>Hızlı Giriş (Walk-in)</div>
+      <div style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>
         Aday ofiste, mail beklemeden hemen mülakata başlayacaksa kullan.
       </div>
       {error && <Alert>{error}</Alert>}
@@ -53,8 +53,9 @@ export default function WalkinPanel({ token }) {
           <Input label="Telefon (opsiyonel)" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="05xx xxx xx xx" />
           <Select label="Pozisyon" options={positions} value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} />
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 6 }}>AI Notu / Özel Talimat (aday görmez, opsiyonel)</label>
-            <textarea rows={3} value={form.ai_note} onChange={e => setForm({ ...form, ai_note: e.target.value })} placeholder="Örn. İngilizceyi özellikle ölç. CV'deki Medidata deneyimini doğrula." style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "2px solid #e2e8f0", fontSize: 14, fontFamily: "Inter, sans-serif", resize: "vertical" }} />
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>AI Notu / Özel Talimat (aday görmez, opsiyonel)</label>
+            <textarea rows={3} value={form.ai_note} onChange={e => setForm({ ...form, ai_note: e.target.value })} placeholder="Örn. İngilizceyi özellikle ölç. CV'deki Medidata deneyimini doğrula."
+              style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, resize: "vertical", boxSizing: "border-box" }} />
           </div>
           <Button disabled={loading || !form.name || !form.position} onClick={create} style={{ width: "100%" }}>
             {loading ? "Oluşturuluyor..." : "Hesap Oluştur"}
@@ -63,19 +64,19 @@ export default function WalkinPanel({ token }) {
       ) : (
         <div>
           <Alert type="success">Hesap oluşturuldu, aşağıdaki bilgilerle hemen giriş yapabilir.</Alert>
-          <div style={{ background: "#f8fafc", borderRadius: 8, padding: 20, marginBottom: 16 }}>
+          <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 20, marginBottom: 16 }}>
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, color: "#64748b" }}>Mülakat Linki</div>
-              <div style={{ fontWeight: 600, color: "#1e3a5f" }}>{mulakatUrl}</div>
+              <div style={{ fontSize: 12, color: colors.muted }}>Mülakat Linki</div>
+              <div style={{ fontWeight: 600, color: colors.ink }}>{mulakatUrl}</div>
             </div>
-            <div style={{ display: "flex", gap: 24 }}>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>Kullanıcı Adı</div>
-                <div style={{ fontWeight: 700, fontSize: 18, color: "#1e3a5f" }}>{result.username}</div>
+                <div style={{ fontSize: 12, color: colors.muted }}>Kullanıcı Adı</div>
+                <div style={{ fontWeight: 700, fontSize: 18, color: colors.ink }}>{result.username}</div>
               </div>
               <div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>Şifre</div>
-                <div style={{ fontWeight: 700, fontSize: 18, color: "#1e3a5f" }}>{result.password}</div>
+                <div style={{ fontSize: 12, color: colors.muted }}>Şifre</div>
+                <div style={{ fontWeight: 700, fontSize: 18, color: colors.ink }}>{result.password}</div>
               </div>
             </div>
           </div>

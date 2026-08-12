@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Card, Input, Select, Button, Alert } from "../components/Layout";
+import { Card, Input, Select, Button, Alert, ChipButton, Badge, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
 function emptyCriterion() {
@@ -71,53 +71,53 @@ export default function PositionManager({ token }) {
   if (editing !== null) {
     return (
       <Card>
-        <div style={{ fontWeight: 700, fontSize: 16, color: "#1e3a5f", marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink, marginBottom: 16 }}>
           {editing === "new" ? "Yeni Pozisyon" : "Pozisyonu Düzenle"}
         </div>
         {error && <Alert>{error}</Alert>}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="admin-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Input label="Pozisyon Adı" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="örn: Saha Eczacısı" />
           <Select label="Kategori" options={categories} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
         </div>
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 6 }}>Görev Tanımı</label>
+          <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>Görev Tanımı</label>
           <textarea
             value={form.role_description}
             onChange={e => setForm({ ...form, role_description: e.target.value })}
             rows={2}
-            style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "2px solid #e2e8f0", fontSize: 14, fontFamily: "Inter, sans-serif", resize: "vertical" }}
+            style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, resize: "vertical", boxSizing: "border-box" }}
             placeholder="Bu pozisyonda kişi ne yapacak?"
           />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: "#1e3a5f" }}>Değerlendirme Kriterleri</label>
-          <span style={{ fontSize: 13, fontWeight: 600, color: totalWeight === 100 ? "#22c55e" : "#f59e0b" }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: colors.inkSoft }}>Değerlendirme Kriterleri</label>
+          <span style={{ fontSize: 13, fontWeight: 600, color: totalWeight === 100 ? colors.green : colors.yellow }}>
             Toplam: {totalWeight}/100
           </span>
         </div>
 
         {form.criteria.map((c, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 80px 2fr 32px", gap: 8, marginBottom: 8, alignItems: "start" }}>
+          <div key={i} className="criteria-row" style={{ display: "grid", gridTemplateColumns: "2fr 80px 2fr 32px", gap: 8, marginBottom: 8, alignItems: "start" }}>
             <input
               value={c.name} onChange={e => updateCriterion(i, "name", e.target.value)}
               placeholder="Kriter adı (örn: Excel Yetkinliği)"
-              style={{ padding: "10px 12px", borderRadius: 6, border: "2px solid #e2e8f0", fontSize: 13 }}
+              style={{ padding: "10px 12px", borderRadius: 6, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: FONT, boxSizing: "border-box" }}
             />
             <input
               type="number" value={c.weight} onChange={e => updateCriterion(i, "weight", e.target.value)}
               placeholder="Puan"
-              style={{ padding: "10px 12px", borderRadius: 6, border: "2px solid #e2e8f0", fontSize: 13 }}
+              style={{ padding: "10px 12px", borderRadius: 6, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: FONT, boxSizing: "border-box" }}
             />
             <input
               value={c.desc} onChange={e => updateCriterion(i, "desc", e.target.value)}
               placeholder="Açıklama (örn: Pivot table, formül bilgisi)"
-              style={{ padding: "10px 12px", borderRadius: 6, border: "2px solid #e2e8f0", fontSize: 13 }}
+              style={{ padding: "10px 12px", borderRadius: 6, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: FONT, boxSizing: "border-box" }}
             />
-            <button onClick={() => removeCriterion(i)} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 6, cursor: "pointer", height: 38 }}>✕</button>
+            <button onClick={() => removeCriterion(i)} style={{ background: colors.redBg, color: colors.red, border: "none", borderRadius: 6, cursor: "pointer", height: 38 }}>✕</button>
           </div>
         ))}
-        <button onClick={addCriterion} style={{ background: "#f1f5f9", color: "#1e3a5f", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 20 }}>
+        <button onClick={addCriterion} style={{ background: colors.surfaceAlt, color: colors.ink, border: `1px solid ${colors.border}`, borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 20, fontFamily: FONT }}>
           + Kriter Ekle
         </button>
 
@@ -131,28 +131,26 @@ export default function PositionManager({ token }) {
 
   return (
     <Card>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div style={{ fontWeight: 700, fontSize: 16, color: "#1e3a5f" }}>Pozisyonlar & Kriterler</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink }}>Pozisyonlar & Kriterler</div>
         <Button onClick={startNew}>+ Yeni Pozisyon</Button>
       </div>
       {positions.filter(p => p.active).map(pos => (
-        <div key={pos.id} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+        <div key={pos.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
             <div>
-              <div style={{ fontWeight: 700, color: "#1e3a5f" }}>{pos.name}</div>
-              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{pos.category || "Genel"}</div>
+              <div style={{ fontWeight: 700, color: colors.ink }}>{pos.name}</div>
+              <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{pos.category || "Genel"}</div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => startEdit(pos)} style={{ background: "#f1f5f9", color: "#1e3a5f", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Düzenle</button>
-              <button onClick={() => deactivate(pos.id)} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Pasifleştir</button>
+              <ChipButton onClick={() => startEdit(pos)}>Düzenle</ChipButton>
+              <ChipButton tone="red" onClick={() => deactivate(pos.id)}>Pasifleştir</ChipButton>
             </div>
           </div>
-          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>{pos.role_description}</div>
+          <div style={{ fontSize: 13, color: colors.muted, marginBottom: 8 }}>{pos.role_description}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {pos.criteria.map((c, i) => (
-              <span key={i} style={{ fontSize: 12, background: "#f8fafc", padding: "3px 10px", borderRadius: 12, color: "#1e3a5f" }}>
-                {c.name} ({c.weight})
-              </span>
+              <Badge key={i}>{c.name} ({c.weight})</Badge>
             ))}
           </div>
         </div>

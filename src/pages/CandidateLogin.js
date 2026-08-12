@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
-import { Header, Card, Input, Button, Alert } from "../components/Layout";
+import { Header, Card, Input, Button, Alert, Icon, colors } from "../components/Layout";
 import { API_URL } from "../App";
 
 export default function CandidateLogin() {
@@ -26,14 +26,19 @@ export default function CandidateLogin() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", flexDirection: "column", alignItems: "center", padding: 24 }}>
-      <div style={{ width: "100%", maxWidth: 420 }}>
+    <div style={{ minHeight: "100vh", background: colors.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: 24 }}>
+      <div style={{ width: "100%", maxWidth: 420, marginTop: "8vh" }}>
         <Header subtitle="Mülakat Girişi" />
         <Card>
           <div style={{ textAlign: "center", marginBottom: 24 }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>👤</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: "#1e3a5f" }}>Aday Girişi</div>
-            <div style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>Davet mailinizde gelen bilgileri girin</div>
+            <div style={{
+              width: 44, height: 44, borderRadius: 10, background: colors.surfaceAlt, border: `1px solid ${colors.border}`,
+              display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px",
+            }}>
+              <Icon name="users" size={20} color={colors.inkSoft} />
+            </div>
+            <div style={{ fontSize: 19, fontWeight: 700, color: colors.ink }}>Aday Girişi</div>
+            <div style={{ color: colors.muted, fontSize: 13.5, marginTop: 4 }}>Davet mailinizde gelen bilgileri girin</div>
           </div>
           {error && <Alert>{error}</Alert>}
           <Input label="Kullanıcı Adı" value={username} onChange={e => setUsername(e.target.value)} placeholder="kullanici_adi" />
@@ -42,9 +47,9 @@ export default function CandidateLogin() {
           <Button style={{ width: "100%", marginBottom: 16 }} disabled={loading || !username || !password} onClick={login}>
             {loading ? "Giriş yapılıyor..." : "Mülakata Gir"}
           </Button>
-          <div style={{ textAlign: "center", color: "#64748b", fontSize: 13 }}>
+          <div style={{ textAlign: "center", color: colors.muted, fontSize: 13 }}>
             Davet almadınız mı?{" "}
-            <Link to="/basvuru" style={{ color: "#1e3a5f", fontWeight: 600 }}>Genel Başvuru</Link>
+            <Link to="/basvuru" style={{ color: colors.ink, fontWeight: 600 }}>Genel Başvuru</Link>
           </div>
         </Card>
       </div>

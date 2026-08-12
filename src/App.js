@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import PersonDetail from "./pages/PersonDetail";
 import CandidateLogin from "./pages/CandidateLogin";
 import GeneralApply from "./pages/GeneralApply";
 import Interview from "./pages/Interview";
@@ -21,6 +22,7 @@ function App() {
         <Route path="/mulakat/sesli" element={<RealtimeInterview />} />
         <Route path="/admin" element={<AdminLogin />} />
         <Route path="/admin/panel" element={<AdminDashboard />} />
+        <Route path="/admin/panel/person/:id" element={<PersonDetail />} />
       </Routes>
     </BrowserRouter>
   );

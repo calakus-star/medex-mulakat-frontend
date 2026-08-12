@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import { Header, Card, Input, Select, Button, Alert } from "../components/Layout";
+import { Header, Card, Input, Select, Button, Alert, Icon, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
 const fieldStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
-const mobileHint = { fontSize: 12, color: "#64748b", marginTop: -8, marginBottom: 12 };
 
 export default function GeneralApply() {
   const [positions, setPositions] = useState([]);
@@ -51,17 +50,22 @@ export default function GeneralApply() {
 
   if (success) {
     return (
-      <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", flexDirection: "column", alignItems: "center", padding: 16 }}>
-        <div style={{ width: "100%", maxWidth: 480 }}>
+      <div style={{ minHeight: "100vh", background: colors.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: 16 }}>
+        <div style={{ width: "100%", maxWidth: 480, marginTop: "8vh" }}>
           <Header subtitle="Başvuru Sistemi" />
           <Card style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#1e3a5f", marginBottom: 8 }}>Başvurunuz Alındı!</div>
-            <div style={{ color: "#64748b", lineHeight: 1.6, marginBottom: 24 }}>
-              Giriş bilgileriniz <strong>{form.email}</strong> adresine gönderildi.<br />
-              Mailinizi kontrol ederek mülakata başlayabilirsiniz.
+            <div style={{
+              width: 52, height: 52, borderRadius: 12, background: colors.greenBg, border: `1px solid ${colors.greenBorder}`,
+              display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px",
+            }}>
+              <Icon name="check" size={24} color={colors.green} />
             </div>
-            <Link to="/mulakat"><Button style={{ width: "100%" }}>Mülakata Git</Button></Link>
+            <div style={{ fontSize: 21, fontWeight: 700, color: colors.ink, marginBottom: 8 }}>Başvurunuz Alındı!</div>
+            <div style={{ color: colors.muted, lineHeight: 1.6, marginBottom: 24 }}>
+              Giriş bilgileriniz <strong style={{ color: colors.ink }}>{form.email}</strong> adresine gönderildi.<br />
+              Mailinizi kontrol ederek CV/profil bilgilerinizi tamamlayabilirsiniz.
+            </div>
+            <Link to="/mulakat"><Button style={{ width: "100%" }}>Giriş Yap</Button></Link>
           </Card>
         </div>
       </div>
@@ -71,13 +75,13 @@ export default function GeneralApply() {
   const isValid = form.name && form.email && form.phone && form.position && form.education;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", flexDirection: "column", alignItems: "center", padding: 16 }}>
-      <div style={{ width: "100%", maxWidth: 680 }}>
+    <div style={{ minHeight: "100vh", background: colors.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: 16 }}>
+      <div style={{ width: "100%", maxWidth: 680, marginTop: "4vh" }}>
         <Header subtitle="İş Başvurusu" />
         <Card>
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: "#1e3a5f", marginBottom: 4 }}>MedeX SMO Başvuru Formu</div>
-            <div style={{ color: "#64748b", fontSize: 14 }}>Eğitim bilgisi zorunludur. CV isteğe bağlıdır; daha sonra da eklenebilir.</div>
+          <div style={{ marginBottom: 22 }}>
+            <div style={{ fontSize: 19, fontWeight: 700, color: colors.ink, marginBottom: 4 }}>MedeX SMO Başvuru Formu</div>
+            <div style={{ color: colors.muted, fontSize: 13.5 }}>Eğitim bilgisi zorunludur. CV isteğe bağlıdır; daha sonra da eklenebilir.</div>
           </div>
           {error && <Alert>{error}</Alert>}
           <div className="apply-grid" style={fieldStyle}>
@@ -88,28 +92,33 @@ export default function GeneralApply() {
             <Input label="Eğitim Durumu *" value={form.education} onChange={e => set("education", e.target.value)} placeholder="Lisans / Yüksek Lisans / Tıp / Doktora" />
             <Input label="Üniversite" value={form.university} onChange={e => set("university", e.target.value)} placeholder="Hacettepe Üniversitesi" />
             <Input label="Bölüm" value={form.department} onChange={e => set("department", e.target.value)} placeholder="Biyoloji / Tıp / Hemşirelik" />
-            <div>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 6 }}>Deneyim (Yıl)</label>
-              <select value={form.experience_years} onChange={e => set("experience_years", e.target.value)} style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "2px solid #e2e8f0", fontSize: 14, background: "#fff" }}>
-                <option value={0}>Deneyim yok</option><option value={1}>1 yıldan az</option><option value={2}>1-3 yıl</option><option value={5}>3-5 yıl</option><option value={6}>5+ yıl</option>
-              </select>
-            </div>
+            <Select
+              label="Deneyim (Yıl)"
+              options={[
+                { value: 0, label: "Deneyim yok" }, { value: 1, label: "1 yıldan az" },
+                { value: 2, label: "1-3 yıl" }, { value: 5, label: "3-5 yıl" }, { value: 6, label: "5+ yıl" },
+              ]}
+              value={form.experience_years}
+              onChange={e => set("experience_years", e.target.value)}
+            />
             <div style={{ gridColumn: "1 / -1" }}>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 6 }}>CV (opsiyonel)</label>
-              <input disabled={skipCv} type="file" accept=".pdf,.docx" onChange={e => setCvFile(e.target.files?.[0] || null)} style={{ width: "100%", padding: 12, borderRadius: 8, border: "2px solid #e2e8f0", background: skipCv ? "#f8fafc" : "#fff" }} />
-              <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, fontSize: 13, color: "#64748b" }}>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>CV (opsiyonel)</label>
+              <input disabled={skipCv} type="file" accept=".pdf,.docx" onChange={e => setCvFile(e.target.files?.[0] || null)}
+                style={{ width: "100%", padding: 11, borderRadius: 8, border: `1px solid ${colors.border}`, background: skipCv ? colors.surfaceAlt : colors.surface, fontFamily: FONT, boxSizing: "border-box" }} />
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, fontSize: 13, color: colors.muted }}>
                 <input type="checkbox" checked={skipCv} onChange={e => { setSkipCv(e.target.checked); if (e.target.checked) setCvFile(null); }} />
                 CV'yi daha sonra yükleyeceğim.
               </label>
             </div>
             <div style={{ gridColumn: "1 / -1" }}>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 6 }}>Ek Not (opsiyonel)</label>
-              <textarea value={form.ai_note} onChange={e => set("ai_note", e.target.value)} placeholder="Örn. İngilizce seviyemi özellikle değerlendirin, belirli deneyimimi anlatmak istiyorum..." rows={3} style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "2px solid #e2e8f0", fontSize: 14, fontFamily: "Inter, sans-serif", resize: "vertical" }} />
-              <div style={mobileHint}>Bu not adayın kendi açıklaması olarak kaydedilir; admin daha sonra özel AI notu ekleyebilir.</div>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>Ek Not (opsiyonel)</label>
+              <textarea value={form.ai_note} onChange={e => set("ai_note", e.target.value)} placeholder="Örn. İngilizce seviyemi özellikle değerlendirin, belirli deneyimimi anlatmak istiyorum..." rows={3}
+                style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, resize: "vertical", boxSizing: "border-box" }} />
+              <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 6 }}>Bu not adayın kendi açıklaması olarak kaydedilir; admin daha sonra özel AI notu ekleyebilir.</div>
             </div>
           </div>
           <Button style={{ width: "100%", marginTop: 8 }} disabled={loading || !isValid} onClick={apply}>{loading ? "Gönderiliyor..." : "Başvur"}</Button>
-          <div style={{ textAlign: "center", marginTop: 16, color: "#64748b", fontSize: 13 }}>Zaten davet aldınız mı? <Link to="/mulakat" style={{ color: "#1e3a5f", fontWeight: 600 }}>Giriş Yap</Link></div>
+          <div style={{ textAlign: "center", marginTop: 16, color: colors.muted, fontSize: 13 }}>Zaten davet aldınız mı? <Link to="/mulakat" style={{ color: colors.ink, fontWeight: 600 }}>Giriş Yap</Link></div>
         </Card>
       </div>
     </div>
