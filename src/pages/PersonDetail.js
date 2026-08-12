@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Header, Card, Button, Alert, Badge, colors, FONT } from "../components/Layout";
+import { Header, Card, Input, Select, Button, Alert, Badge, Modal, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
+const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
+const STATUS_TONE = { pending: "yellow", completed: "green" };
 const REC_TONE = { "İşe Al": "green", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
 
 const stripMarkdown = (value = "") => value
@@ -11,6 +13,21 @@ const stripMarkdown = (value = "") => value
   .replace(/^\s*[-*]\s+/gm, "• ")
   .replace(/---RAPOR---|---RAPORSON---|---STANDARTCV---|---STANDARTCVSON---/g, "")
   .trim();
+
+function ReportText({ text }) {
+  const clean = stripMarkdown(text || "Rapor bulunamadı.");
+  const lines = clean.split("\n").filter(Boolean);
+  return (
+    <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 16, fontSize: 13, lineHeight: 1.65, marginBottom: 20 }}>
+      {lines.map((line, idx) => {
+        const isTitle = line.endsWith(":") || line.startsWith("TOPLAM PUAN") || line.startsWith("Öneri:");
+        return <div key={idx} style={{ marginBottom: 6, fontWeight: isTitle ? 700 : 400, color: isTitle ? colors.ink : colors.inkSoft, whiteSpace: "pre-wrap" }}>{line}</div>;
+      })}
+    </div>
+  );
+}
+
+const emptyEditForm = { positionGroup: "", position: "", level: 1, depth_tier: "standart", interview_language: "tr", report_language: "tr", education: "", university: "", department: "", experience_years: 0, ai_note: "" };
 
 export default function PersonDetail() {
   const { id } = useParams();
@@ -24,8 +41,16 @@ export default function PersonDetail() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
-  const [expanded, setExpanded] = useState(null);
-  const [reportsByCandidate, setReportsByCandidate] = useState({});
+  const [positionsRaw, setPositionsRaw] = useState([]);
+
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [snapshots, setSnapshots] = useState([]);
+  const [modalError, setModalError] = useState("");
+  const [credModal, setCredModal] = useState(null);
+
+  const [editingAttemptId, setEditingAttemptId] = useState(null);
+  const [editForm, setEditForm] = useState(emptyEditForm);
+  const [editCvFile, setEditCvFile] = useState(null);
 
   const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
@@ -46,20 +71,17 @@ export default function PersonDetail() {
   useEffect(() => {
     if (!token) { navigate("/admin"); return; }
     fetchAll();
+    axios.get(`${API_URL}/api/admin/positions`, authHeaders).then(res => {
+      setPositionsRaw((Array.isArray(res.data) ? res.data : []).filter(p => p.active));
+    });
     // eslint-disable-next-line
   }, [id]);
 
-  const toggleExpand = async (candidateId) => {
-    if (expanded === candidateId) { setExpanded(null); return; }
-    setExpanded(candidateId);
-    if (!reportsByCandidate[candidateId]) {
-      try {
-        const res = await axios.get(`${API_URL}/api/admin/interviews/${candidateId}`, authHeaders);
-        setReportsByCandidate(prev => ({ ...prev, [candidateId]: res.data }));
-      } catch (e) {
-        setReportsByCandidate(prev => ({ ...prev, [candidateId]: { report: "Rapor yüklenemedi." } }));
-      }
-    }
+  const groupOptions = Array.from(new Set(positionsRaw.map(p => p.category || "Genel"))).map(c => ({ value: c, label: c }));
+  const positionOptionsForGroup = (group) => positionsRaw.filter(p => (p.category || "Genel") === group).map(p => ({ value: p.name, label: p.name }));
+  const findGroupForPosition = (positionName) => {
+    const found = positionsRaw.find(p => p.name === positionName);
+    return found ? (found.category || "Genel") : "";
   };
 
   const addNote = async () => {
@@ -88,6 +110,131 @@ export default function PersonDetail() {
       setError(e.response?.data?.detail || "Değerlendirme oluşturulamadı");
     }
     setEvaluating(false);
+  };
+
+  const viewReport = async (candidateId) => {
+    setModalError("");
+    try {
+      const res = await axios.get(`${API_URL}/api/admin/interviews/${candidateId}`, authHeaders);
+      setSelectedReport(res.data);
+      try {
+        const snapRes = await axios.get(`${API_URL}/api/admin/snapshots/${candidateId}`, authHeaders);
+        setSnapshots(snapRes.data || []);
+      } catch (e) {
+        setSnapshots([]);
+        setModalError(e.response?.data?.detail || "Kamera kareleri yüklenemedi");
+      }
+    } catch (e) {
+      setError("Rapor bulunamadı");
+    }
+  };
+
+  const downloadPdf = async (candidateId, candidateName = "aday") => {
+    try {
+      const res = await axios.get(`${API_URL}/api/admin/interviews/${candidateId}/pdf`, { ...authHeaders, responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `MedeX_Rapor_${candidateName.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      let detail = "PDF rapor indirilemedi";
+      try {
+        if (e.response?.data instanceof Blob) {
+          const text = await e.response.data.text();
+          const parsed = JSON.parse(text);
+          if (parsed?.detail) detail = parsed.detail;
+        } else if (e.response?.data?.detail) detail = e.response.data.detail;
+      } catch (parseErr) { /* yoksay */ }
+      setModalError(detail);
+    }
+  };
+
+  const resendInvite = async (candidateId) => {
+    try {
+      const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/resend`, {}, authHeaders);
+      if (res.data.mail_sent) setSuccess(`Mail tekrar gönderildi. Kullanıcı: ${res.data.username}`);
+      else setCredModal({ username: res.data.username, password: res.data.password });
+      fetchAll();
+    } catch (e) {
+      setError(e.response?.data?.detail || "Hata oluştu");
+    }
+  };
+
+  const showCredentials = async (candidateId) => {
+    try {
+      const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/show-credentials`, {}, authHeaders);
+      setCredModal({ username: res.data.username, password: res.data.password });
+    } catch (e) {
+      setError(e.response?.data?.detail || "Hata oluştu");
+    }
+  };
+
+  const resetPassword = async (candidateId) => {
+    if (!window.confirm("Şifreyi sıfırlamak istediğine emin misin? Eski şifre geçersiz olacak.")) return;
+    try {
+      const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/reset-password`, {}, authHeaders);
+      setCredModal({ username: res.data.username, password: res.data.password });
+    } catch (e) {
+      setError("Hata oluştu");
+    }
+  };
+
+  const deleteCandidate = async (candidateId, name) => {
+    if (!window.confirm(`${name} adlı adayın bu denemesini silmek istediğine emin misin? Bu işlem geri alınamaz.`)) return;
+    try {
+      await axios.delete(`${API_URL}/api/admin/candidates/${candidateId}`, authHeaders);
+      setSuccess(`Deneme silindi`);
+      fetchAll();
+    } catch (e) {
+      setError("Silme işlemi başarısız");
+    }
+  };
+
+  const toggleReapply = async (candidateId) => {
+    try {
+      const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/allow-reapply`, {}, authHeaders);
+      setSuccess(res.data.reapply_allowed ? "Tekrar başvuru izni açıldı" : "Tekrar başvuru izni kapatıldı");
+      fetchAll();
+    } catch (e) {
+      setError(e.response?.data?.detail || "Tekrar başvuru izni güncellenemedi");
+    }
+  };
+
+  const startEditAttempt = (a) => {
+    setEditingAttemptId(a.candidate_id);
+    setEditForm({
+      positionGroup: findGroupForPosition(a.position || ""), position: a.position || "",
+      level: a.level || 1, depth_tier: a.depth_tier || "standart",
+      interview_language: a.interview_language || "tr", report_language: a.report_language || "tr",
+      education: a.education || "", university: a.university || "", department: a.department || "",
+      experience_years: a.experience_years || 0, ai_note: a.ai_note || "",
+    });
+    setEditCvFile(null);
+    setError("");
+  };
+
+  const saveEditAttempt = async () => {
+    setLoading(true); setError(""); setSuccess("");
+    try {
+      await axios.patch(`${API_URL}/api/admin/candidates/${editingAttemptId}`, editForm, authHeaders);
+      if (editCvFile) {
+        const fd = new FormData();
+        fd.append("file", editCvFile);
+        await axios.post(`${API_URL}/api/admin/candidates/${editingAttemptId}/upload-cv`, fd, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }
+        });
+      }
+      setSuccess("Aday bilgileri güncellendi");
+      setEditingAttemptId(null);
+      fetchAll();
+    } catch (e) {
+      setError(e.response?.data?.detail || "Hata oluştu");
+    }
+    setLoading(false);
   };
 
   if (!detail) {
@@ -130,33 +277,61 @@ export default function PersonDetail() {
           ) : (
             attempts.map(a => (
               <div key={a.candidate_id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
                   <div>
                     <div style={{ fontWeight: 600, color: colors.ink }}>
                       {a.position} · Level {a.level}
                       {a.is_archived ? <span style={{ marginLeft: 8, fontSize: 11, color: colors.mutedLight }}>(eski başvuru)</span> : null}
                     </div>
-                    <div style={{ fontSize: 12, color: colors.muted }}>
-                      {a.created_at} · {a.status === "completed" ? "Tamamlandı" : "Bekliyor"}
+                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>{a.created_at}</div>
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <Badge tone={STATUS_TONE[a.status] || "yellow"}>{STATUS_LABELS[a.status] || a.status}</Badge>
+                      {a.score !== null && a.score !== undefined && <span style={{ fontWeight: 700, color: colors.ink, fontSize: 13 }}>{a.score}/100</span>}
+                      {a.recommendation && <Badge tone={REC_TONE[a.recommendation] || "neutral"}>{a.recommendation}</Badge>}
+                      {a.reapply_allowed ? <Badge tone="green">Tekrar başvuru açık</Badge> : null}
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    {a.score !== null && a.score !== undefined && (
-                      <div style={{ fontWeight: 700, color: colors.ink }}>{a.score}/100</div>
-                    )}
-                    {a.recommendation && (
-                      <Badge tone={REC_TONE[a.recommendation] || "neutral"}>{a.recommendation}</Badge>
-                    )}
-                    {a.status === "completed" && (
-                      <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => toggleExpand(a.candidate_id)}>
-                        {expanded === a.candidate_id ? "Gizle" : "Raporu Gör"}
-                      </Button>
-                    )}
-                  </div>
                 </div>
-                {expanded === a.candidate_id && reportsByCandidate[a.candidate_id] && (
-                  <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 14, marginTop: 12, fontSize: 13, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>
-                    {stripMarkdown(reportsByCandidate[a.candidate_id].report || "Rapor bulunamadı.")}
+
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+                  {a.status === "completed" && (
+                    <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => viewReport(a.candidate_id)}>Rapor</Button>
+                  )}
+                  {a.status === "pending" && (
+                    <>
+                      <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => resendInvite(a.candidate_id)}>↻ Tekrar Gönder</Button>
+                      <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => showCredentials(a.candidate_id)}>👁 Göster</Button>
+                      <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => resetPassword(a.candidate_id)}>🔄 Şifre Sıfırla</Button>
+                    </>
+                  )}
+                  <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => editingAttemptId === a.candidate_id ? setEditingAttemptId(null) : startEditAttempt(a)}>
+                    {editingAttemptId === a.candidate_id ? "Düzenlemeyi Kapat" : "✏️ Düzenle"}
+                  </Button>
+                  <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => toggleReapply(a.candidate_id)}>
+                    {a.reapply_allowed ? "İzni Kapat" : "Tekrar İzin"}
+                  </Button>
+                  <Button variant="danger" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => deleteCandidate(a.candidate_id, person.full_name)}>Sil</Button>
+                </div>
+
+                {editingAttemptId === a.candidate_id && (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.border}` }}>
+                    <div className="admin-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <Select label="Grup" options={groupOptions} value={editForm.positionGroup} onChange={e => setEditForm({ ...editForm, positionGroup: e.target.value, position: "" })} />
+                      <Select label="Pozisyon" options={positionOptionsForGroup(editForm.positionGroup)} value={editForm.position} onChange={e => setEditForm({ ...editForm, position: e.target.value })} disabled={!editForm.positionGroup} />
+                      <Select label="Mülakat Seviyesi" options={[{ value: 1, label: "Level 1" }, { value: 2, label: "Level 2" }, { value: 3, label: "Level 3" }]} value={editForm.level} onChange={e => setEditForm({ ...editForm, level: parseInt(e.target.value, 10) })} />
+                      <Select label="Derinlik" options={[{ value: "kisa", label: "Kısa" }, { value: "standart", label: "Standart" }, { value: "derin", label: "Derin" }]} value={editForm.depth_tier} onChange={e => setEditForm({ ...editForm, depth_tier: e.target.value })} />
+                      <Input label="Üniversite" value={editForm.university} onChange={e => setEditForm({ ...editForm, university: e.target.value })} />
+                      <Input label="Bölüm" value={editForm.department} onChange={e => setEditForm({ ...editForm, department: e.target.value })} />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>AI Notu / Özel Talimat</label>
+                      <textarea rows={2} value={editForm.ai_note} onChange={e => setEditForm({ ...editForm, ai_note: e.target.value })} style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, resize: "vertical", boxSizing: "border-box" }} />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>CV Güncelle (opsiyonel)</label>
+                      <input type="file" accept=".pdf,.docx" onChange={e => setEditCvFile(e.target.files?.[0] || null)} style={{ width: "100%", padding: 11, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: FONT, boxSizing: "border-box" }} />
+                    </div>
+                    <Button disabled={loading} onClick={saveEditAttempt}>{loading ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}</Button>
                   </div>
                 )}
               </div>
@@ -196,6 +371,96 @@ export default function PersonDetail() {
             ))
           )}
         </Card>
+
+        {/* Rapor Modal */}
+        {selectedReport && (
+          <Modal onClose={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} maxWidth={720}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 20 }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: colors.ink }}>Mülakat Raporu</div>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+                  {selectedReport.name} · {selectedReport.email || "E-posta yok"} · {selectedReport.phone || "Telefon yok"}
+                </div>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
+                  Eğitim: {selectedReport.education || "-"} · Üniversite: {selectedReport.university || "-"} · Bölüm: {selectedReport.department || "-"} · Deneyim: {selectedReport.experience_years ?? 0} yıl
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadPdf(selectedReport.candidate_id, selectedReport.name)}>PDF İndir</Button>
+                <button onClick={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted, fontSize: 20 }}>✕</button>
+              </div>
+            </div>
+            {modalError && <Alert>{modalError}</Alert>}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10, fontSize: 14 }}>Mülakat Sırasında Alınan Kareler ({snapshots.length}/4)</div>
+              {snapshots.length === 0 && <div style={{ color: colors.muted, fontSize: 13, marginBottom: 8 }}>Henüz kayıtlı kamera karesi yok.</div>}
+              {snapshots.length > 0 && (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {snapshots.map(s => (
+                    <img key={s.id} src={s.image_base64} alt="mülakat karesi" style={{ width: 110, height: 82, objectFit: "cover", borderRadius: 6, border: `1px solid ${colors.border}` }} />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+              <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                <div style={{ fontSize: 26, fontWeight: 700, color: colors.ink }}>{selectedReport.score ?? "-"}</div>
+                <div style={{ fontSize: 12, color: colors.muted }}>/ 100</div>
+              </div>
+              <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                <Badge tone={REC_TONE[selectedReport.recommendation] || "neutral"}>{selectedReport.recommendation || "-"}</Badge>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Öneri</div>
+              </div>
+            </div>
+            {selectedReport.usage_logs && selectedReport.usage_logs.length > 0 && (
+              <div style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 14, marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>AI Kullanım Logu</div>
+                <div style={{ fontSize: 12, color: colors.muted }}>
+                  Toplam: {(selectedReport.usage_total_tokens || 0).toLocaleString("tr-TR")} token · <span style={{ fontWeight: 700, color: colors.ink }}>~${(selectedReport.usage_total_cost_usd || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+                </div>
+              </div>
+            )}
+            <ReportText text={selectedReport.report} />
+            {selectedReport.ai_note && (
+              <>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>AI Notu / Özel Talimat</div>
+                <pre style={{ background: colors.purpleBg, border: `1px solid ${colors.purpleBorder}`, borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7, fontFamily: FONT }}>{selectedReport.ai_note}</pre>
+              </>
+            )}
+            {selectedReport.cv_text && (
+              <>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>Adayın Yüklediği CV {selectedReport.cv_filename ? `(${selectedReport.cv_filename})` : ""}</div>
+                <pre style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7, maxHeight: 260, overflowY: "auto", fontFamily: FONT }}>{selectedReport.cv_text}</pre>
+              </>
+            )}
+            {selectedReport.standard_cv && (
+              <>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>Standart CV</div>
+                <pre style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7, fontFamily: FONT }}>{selectedReport.standard_cv}</pre>
+              </>
+            )}
+          </Modal>
+        )}
+
+        {credModal && (
+          <Modal onClose={() => setCredModal(null)} maxWidth={400}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: colors.ink, marginBottom: 8 }}>Giriş Bilgileri</div>
+              <div style={{ fontSize: 13, color: colors.muted, marginBottom: 20 }}>Mail gönderilemedi veya manuel iletmek istiyorsanız bu bilgileri kullanın.</div>
+              <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 20, marginBottom: 20 }}>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: colors.muted }}>Kullanıcı Adı</div>
+                  <div style={{ fontWeight: 700, fontSize: 18, color: colors.ink }}>{credModal.username}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: colors.muted }}>Şifre</div>
+                  <div style={{ fontWeight: 700, fontSize: 18, color: colors.ink }}>{credModal.password}</div>
+                </div>
+              </div>
+              <Button onClick={() => setCredModal(null)} style={{ width: "100%" }}>Kapat</Button>
+            </div>
+          </Modal>
+        )}
       </div>
     </div>
   );

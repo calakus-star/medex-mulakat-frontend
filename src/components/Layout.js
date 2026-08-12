@@ -201,6 +201,46 @@ export function Alert({ type = "error", children }) {
   );
 }
 
+// ---- Avatar: isim baş harfi, isme göre tutarlı bir tonda daire ----
+const AVATAR_TONES = [
+  { bg: "#dbeafe", color: "#1d4ed8" }, { bg: "#dcfce7", color: "#15803d" },
+  { bg: "#fef3c7", color: "#b45309" }, { bg: "#fce7f3", color: "#be185d" },
+  { bg: "#ede9fe", color: "#6d28d9" }, { bg: "#e0f2fe", color: "#0369a1" },
+];
+export function Avatar({ name, size = 38 }) {
+  const initial = (name || "?").trim().charAt(0).toUpperCase();
+  let hash = 0;
+  for (let i = 0; i < (name || "").length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const tone = AVATAR_TONES[hash % AVATAR_TONES.length];
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: "50%", background: tone.bg, color: tone.color,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontWeight: 700, fontSize: size * 0.42, fontFamily: FONT, flexShrink: 0,
+    }}>
+      {initial}
+    </div>
+  );
+}
+
+// ---- Filtre çipi: aktif/pasif pill buton (referans görseldeki "Tümü 12" tarzı) ----
+export function FilterChip({ children, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? colors.accent : colors.surface,
+        color: active ? "#fff" : colors.inkSoft,
+        border: active ? "1px solid " + colors.accent : `1px solid ${colors.border}`,
+        borderRadius: 20, padding: "6px 14px", fontSize: 12.5, fontWeight: 600,
+        cursor: "pointer", fontFamily: FONT,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ---- Stat kartı: sayı + etiket, referans görseldeki sade kart hissi ----
 export function StatTile({ label, value }) {
   return (
