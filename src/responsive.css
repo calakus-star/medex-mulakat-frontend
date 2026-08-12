@@ -1,0 +1,13 @@
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; }
+body { margin: 0; -webkit-font-smoothing: antialiased; }
+textarea, input, select, button { max-width: 100%; }
+@media (max-width: 720px) {
+  .apply-grid { grid-template-columns: 1fr !important; }
+  table { min-width: 860px; }
+  .camera-preview { height: 120px !important; }
+}
+@media (max-width: 480px) {
+  body { background: #f0f4f8; }
+  .camera-preview { height: 150px !important; }
+}
