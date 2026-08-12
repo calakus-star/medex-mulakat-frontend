@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Header, Card, Button, Alert, Icon, Badge, colors, FONT } from "../components/Layout";
+import { Header, Card, Button, Alert, Badge, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
 const REC_TONE = { "İşe Al": "green", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
@@ -168,10 +168,7 @@ export default function PersonDetail() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink }}>Notlar & Değerlendirme</div>
             <Button onClick={runEvaluate} disabled={evaluating}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Icon name="sparkle" size={14} />
-                {evaluating ? "Değerlendiriliyor..." : "Değerlendir (AI Özet)"}
-              </span>
+              {evaluating ? "Değerlendiriliyor..." : "🔎 Değerlendir (AI Özet)"}
             </Button>
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>

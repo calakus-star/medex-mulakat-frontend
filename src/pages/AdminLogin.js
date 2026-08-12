@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Header, Card, Input, Button, Alert, Icon, colors } from "../components/Layout";
+import { Header, Card, Input, Button, Alert, colors } from "../components/Layout";
 import { API_URL } from "../App";
 
 export default function AdminLogin() {
@@ -29,12 +29,7 @@ export default function AdminLogin() {
         <Header subtitle="Admin Paneli" />
         <Card>
           <div style={{ textAlign: "center", marginBottom: 24 }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 10, background: colors.surfaceAlt, border: `1px solid ${colors.border}`,
-              display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px",
-            }}>
-              <Icon name="key" size={20} color={colors.inkSoft} />
-            </div>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🔐</div>
             <div style={{ fontSize: 19, fontWeight: 700, color: colors.ink }}>Yönetici Girişi</div>
           </div>
           {error && <Alert>{error}</Alert>}

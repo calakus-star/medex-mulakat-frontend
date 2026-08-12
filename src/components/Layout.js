@@ -27,39 +27,6 @@ export const colors = {
 
 export const FONT = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif";
 
-// ---- İkonlar: emoji yerine sade çizgi ikonlar (bağımlılık eklemeden, inline SVG) ----
-const ICON_PATHS = {
-  grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
-  users: "M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M11 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
-  briefcase: "M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2ZM16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2",
-  check: "M20 6 9 17l-5-5",
-  plus: "M12 5v14M5 12h14",
-  close: "M18 6 6 18M6 6l18 12",
-  edit: "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z",
-  trash: "M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z",
-  eye: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8ZM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z",
-  refresh: "M21 2v6h-6M3 22v-6h6M2.5 9.5A9 9 0 0 1 20 7l1 1M21.5 14.5A9 9 0 0 1 4 17l-1-1",
-  key: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3-3.5 3.5Zm0 0L19 4",
-  history: "M3 3v5h5M3.05 13A9 9 0 1 0 6 5.3L3 8M12 7v5l4 2",
-  search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM21 21l-4.35-4.35",
-  logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
-  file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6",
-  sparkle: "M12 3v4M12 17v4M5 12H3M8 8 5.5 5.5M16 8l2.5-2.5M8 16l-2.5 2.5M16 16l2.5 2.5M21 12h-2",
-  chevronDown: "M6 9l6 6 6-6",
-  building: "M3 21h18M6 21V8l6-4 6 4v13M9 21v-6h6v6M9 12h.01M15 12h.01M9 8h.01M15 8h.01",
-};
-
-export function Icon({ name, size = 16, color = "currentColor", style = {} }) {
-  const d = ICON_PATHS[name];
-  if (!d) return null;
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, ...style }}>
-      <path d={d} />
-    </svg>
-  );
-}
-
 export function Header({ subtitle, badge = "AI Mülakat Sistemi" }) {
   return (
     <div style={{
@@ -178,8 +145,8 @@ export function Button({ children, variant = "primary", disabled, style = {}, ..
   );
 }
 
-// Küçük, ikon niyetine kullanılan aksiyon butonu — emoji yerine.
-export function ChipButton({ children, iconName, tone = "neutral", style = {}, ...props }) {
+// Küçük aksiyon butonu — metnin başına emoji eklemek çağıran tarafın işi.
+export function ChipButton({ children, tone = "neutral", style = {}, ...props }) {
   const tones = {
     neutral: { bg: colors.surfaceAlt, color: colors.inkSoft },
     blue: { bg: colors.blueBg, color: colors.blue },
@@ -194,11 +161,10 @@ export function ChipButton({ children, iconName, tone = "neutral", style = {}, .
       style={{
         background: t.bg, color: t.color, border: "none", borderRadius: 6,
         padding: "6px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-        fontFamily: FONT, display: "inline-flex", alignItems: "center", gap: 5, ...style
+        fontFamily: FONT, ...style
       }}
       {...props}
     >
-      {iconName && <Icon name={iconName} size={13} />}
       {children}
     </button>
   );
@@ -236,18 +202,11 @@ export function Alert({ type = "error", children }) {
 }
 
 // ---- Stat kartı: sayı + etiket, referans görseldeki sade kart hissi ----
-export function StatTile({ label, value, iconName }) {
+export function StatTile({ label, value }) {
   return (
-    <Card style={{ padding: 16, display: "flex", alignItems: "center", gap: 12 }}>
-      {iconName && (
-        <div style={{ width: 36, height: 36, borderRadius: 8, background: colors.surfaceAlt, border: `1px solid ${colors.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Icon name={iconName} size={17} color={colors.inkSoft} />
-        </div>
-      )}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 24, fontWeight: 700, color: colors.ink, lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{label}</div>
-      </div>
+    <Card style={{ padding: 16, textAlign: "center" }}>
+      <div style={{ fontSize: 28, fontWeight: 700, color: colors.ink, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>{label}</div>
     </Card>
   );
 }
@@ -265,10 +224,9 @@ export function Tabs({ items, active, onChange }) {
             color: active === t.key ? "#fff" : colors.ink,
             border: active === t.key ? "1px solid " + colors.accent : `1px solid ${colors.border}`,
             borderRadius: 8, padding: "9px 18px", fontSize: 13.5, fontWeight: 600,
-            cursor: "pointer", fontFamily: FONT, display: "inline-flex", alignItems: "center", gap: 6,
+            cursor: "pointer", fontFamily: FONT,
           }}
         >
-          {t.iconName && <Icon name={t.iconName} size={14} />}
           {t.label}
         </button>
       ))}

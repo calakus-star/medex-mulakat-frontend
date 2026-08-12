@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
-import { Header, Card, Input, Button, Alert, Icon, colors } from "../components/Layout";
+import { Header, Card, Input, Button, Alert, colors } from "../components/Layout";
 import { API_URL } from "../App";
 
 export default function CandidateLogin() {
@@ -31,12 +31,7 @@ export default function CandidateLogin() {
         <Header subtitle="Mülakat Girişi" />
         <Card>
           <div style={{ textAlign: "center", marginBottom: 24 }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 10, background: colors.surfaceAlt, border: `1px solid ${colors.border}`,
-              display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px",
-            }}>
-              <Icon name="users" size={20} color={colors.inkSoft} />
-            </div>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>👤</div>
             <div style={{ fontSize: 19, fontWeight: 700, color: colors.ink }}>Aday Girişi</div>
             <div style={{ color: colors.muted, fontSize: 13.5, marginTop: 4 }}>Davet mailinizde gelen bilgileri girin</div>
           </div>

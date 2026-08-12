@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Card, Select, Button, Alert, Icon, colors } from "../components/Layout";
+import { Card, Select, Button, Alert, colors } from "../components/Layout";
 import { API_URL } from "../App";
 
 export default function CvPool({ token }) {
@@ -86,11 +86,7 @@ export default function CvPool({ token }) {
                   {p.ai_note && <span style={{ fontSize: 12, color: colors.purple, fontWeight: 600 }}>Ek not var</span>}
                 </div>
               </div>
-              <Button onClick={() => startInvite(p.id)}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <Icon name="plus" size={14} />Kurumuma Davet Et
-                </span>
-              </Button>
+              <Button onClick={() => startInvite(p.id)}>+ Kurumuma Davet Et</Button>
             </div>
             {expandedCv === p.id && p.cv_text && (
               <pre style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 14, marginTop: 12, fontSize: 12.5, whiteSpace: "pre-wrap", lineHeight: 1.6, maxHeight: 220, overflowY: "auto" }}>

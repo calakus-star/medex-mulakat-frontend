@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Card, Input, Select, Button, Alert, Icon, Badge, ChipButton, StatTile, Tabs, Table, Modal, colors, FONT } from "../components/Layout";
+import { Card, Input, Select, Button, Alert, Badge, ChipButton, StatTile, Tabs, Table, Modal, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 import PositionManager from "./PositionManager";
 import WalkinPanel from "./WalkinPanel";
 import CvPool from "./CvPool";
+import SuperAdminPanel from "./SuperAdminPanel";
 
 const STATUS_TONE = { pending: "yellow", completed: "green" };
 const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
@@ -62,6 +63,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState("candidates");
   const [positionsRaw, setPositionsRaw] = useState([]);
   const [credModal, setCredModal] = useState(null);
+  const [adminRole, setAdminRole] = useState(null);
   const navigate = useNavigate();
 
   const token = localStorage.getItem("admin_token");
@@ -74,6 +76,9 @@ export default function AdminDashboard() {
         const list = (Array.isArray(res.data) ? res.data : []).filter(p => p.active);
         setPositionsRaw(list);
       });
+    axios.get(`${API_URL}/api/admin/profile`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => setAdminRole(res.data?.admin_role || null))
+      .catch(() => {});
     // eslint-disable-next-line
   }, []);
 
@@ -330,16 +335,16 @@ export default function AdminDashboard() {
             <div style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>Admin Paneli</div>
           </div>
           <Button variant="secondary" onClick={() => { localStorage.removeItem("admin_token"); navigate("/admin"); }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="logout" size={14} />Çıkış</span>
+            Çıkış
           </Button>
         </div>
 
         {/* Stats */}
         <div className="admin-stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 }}>
-          <StatTile label="Toplam Aday" value={stats.total} iconName="users" />
-          <StatTile label="Bekleyen" value={stats.pending} iconName="history" />
-          <StatTile label="Tamamlanan" value={stats.completed} iconName="check" />
-          <StatTile label="İşe Al Önerisi" value={stats.hireCount} iconName="sparkle" />
+          <StatTile label="Toplam Aday" value={stats.total} />
+          <StatTile label="Bekleyen" value={stats.pending} />
+          <StatTile label="Tamamlanan" value={stats.completed} />
+          <StatTile label="İşe Al Önerisi" value={stats.hireCount} />
         </div>
 
         {/* Tabs */}
@@ -347,16 +352,18 @@ export default function AdminDashboard() {
           active={tab}
           onChange={setTab}
           items={[
-            { key: "candidates", label: "Adaylar", iconName: "users" },
-            { key: "positions", label: "Pozisyonlar", iconName: "briefcase" },
-            { key: "walkin", label: "Hızlı Giriş", iconName: "plus" },
-            { key: "cvpool", label: "CV Havuzu", iconName: "file" },
+            { key: "candidates", label: "Adaylar" },
+            { key: "positions", label: "Pozisyonlar" },
+            { key: "walkin", label: "Hızlı Giriş" },
+            { key: "cvpool", label: "CV Havuzu" },
+            ...(adminRole === "superadmin" ? [{ key: "orgs", label: "Kurumlar" }] : []),
           ]}
         />
 
         {tab === "positions" && <PositionManager token={token} />}
         {tab === "walkin" && <WalkinPanel token={token} />}
         {tab === "cvpool" && <CvPool token={token} />}
+        {tab === "orgs" && adminRole === "superadmin" && <SuperAdminPanel token={token} />}
         {tab === "candidates" && (
         <>
         {success && <Alert type="success">{success}</Alert>}
@@ -367,10 +374,7 @@ export default function AdminDashboard() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showForm ? 20 : 0, flexWrap: "wrap", gap: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink }}>{editingId ? "Aday Düzenle" : "Aday Davet Et"}</div>
             <Button onClick={() => showForm ? cancelForm() : setShowForm(true)}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Icon name={showForm ? "close" : "plus"} size={14} />
-                {showForm ? "İptal" : "Yeni Aday"}
-              </span>
+              {showForm ? "İptal" : "+ Yeni Aday"}
             </Button>
           </div>
           {showForm && (
@@ -526,23 +530,23 @@ export default function AdminDashboard() {
                     <td style={{ padding: "12px" }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {c.status === "completed" && (
-                          <ChipButton tone="neutral" iconName="file" onClick={() => viewReport(c.id)}>Rapor</ChipButton>
+                          <ChipButton tone="neutral" onClick={() => viewReport(c.id)}>Rapor</ChipButton>
                         )}
                         {c.status === "pending" && (
                           <>
-                            <ChipButton tone="blue" iconName="refresh" onClick={() => resendInvite(c.id)} title="Maili tekrar gönder">Tekrar Gönder</ChipButton>
-                            <ChipButton tone="green" iconName="eye" onClick={() => showCredentials(c.id)} title="Mevcut bilgileri ekranda göster">Göster</ChipButton>
-                            <ChipButton tone="yellow" iconName="key" onClick={() => resetPassword(c.id)} title="Şifreyi sıfırla (yeni şifre üretir)">Şifre Sıfırla</ChipButton>
+                            <ChipButton tone="blue" onClick={() => resendInvite(c.id)} title="Maili tekrar gönder">↻ Tekrar Gönder</ChipButton>
+                            <ChipButton tone="green" onClick={() => showCredentials(c.id)} title="Mevcut bilgileri ekranda göster">👁 Göster</ChipButton>
+                            <ChipButton tone="yellow" onClick={() => resetPassword(c.id)} title="Şifreyi sıfırla (yeni şifre üretir)">🔄 Şifre Sıfırla</ChipButton>
                           </>
                         )}
                         {c.person_id && (
-                          <ChipButton tone="blue" iconName="history" onClick={() => navigate(`/admin/panel/person/${c.person_id}`)} title="Bu kişinin tüm mülakat geçmişini gör">Geçmiş</ChipButton>
+                          <ChipButton tone="blue" onClick={() => navigate(`/admin/panel/person/${c.person_id}`)} title="Bu kişinin tüm mülakat geçmişini gör">Geçmiş</ChipButton>
                         )}
-                        <ChipButton tone="purple" iconName="edit" onClick={() => startEdit(c)} title="Aday bilgilerini / AI notunu düzenle">Düzenle</ChipButton>
+                        <ChipButton tone="purple" onClick={() => startEdit(c)} title="Aday bilgilerini / AI notunu düzenle">✏️ Düzenle</ChipButton>
                         <ChipButton tone={c.reapply_allowed ? "green" : "neutral"} onClick={() => toggleReapply(c.id)} title="Adayın aynı e-posta ile yeniden başvurmasına izin ver/kapat">
                           {c.reapply_allowed ? "İzni Kapat" : "Tekrar İzin"}
                         </ChipButton>
-                        <ChipButton tone="red" iconName="trash" onClick={() => deleteCandidate(c.id, c.name)} title="Adayı sil">Sil</ChipButton>
+                        <ChipButton tone="red" onClick={() => deleteCandidate(c.id, c.name)} title="Adayı sil">Sil</ChipButton>
                       </div>
                     </td>
                   </tr>
@@ -569,9 +573,7 @@ export default function AdminDashboard() {
                 <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadPdf(selectedReport.candidate_id, selectedReport.name)}>
                   PDF İndir
                 </Button>
-                <button onClick={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted }}>
-                  <Icon name="close" size={20} />
-                </button>
+                <button onClick={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted, fontSize: 20 }}>✕</button>
               </div>
             </div>
             {modalError && <Alert>{modalError}</Alert>}

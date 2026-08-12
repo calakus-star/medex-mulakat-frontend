@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import { Header, Card, Input, Select, Button, Alert, Icon, colors, FONT } from "../components/Layout";
+import { Header, Card, Input, Select, Button, Alert, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
 const fieldStyle = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
@@ -54,12 +54,7 @@ export default function GeneralApply() {
         <div style={{ width: "100%", maxWidth: 480, marginTop: "8vh" }}>
           <Header subtitle="Başvuru Sistemi" />
           <Card style={{ textAlign: "center" }}>
-            <div style={{
-              width: 52, height: 52, borderRadius: 12, background: colors.greenBg, border: `1px solid ${colors.greenBorder}`,
-              display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px",
-            }}>
-              <Icon name="check" size={24} color={colors.green} />
-            </div>
+            <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
             <div style={{ fontSize: 21, fontWeight: 700, color: colors.ink, marginBottom: 8 }}>Başvurunuz Alındı!</div>
             <div style={{ color: colors.muted, lineHeight: 1.6, marginBottom: 24 }}>
               Giriş bilgileriniz <strong style={{ color: colors.ink }}>{form.email}</strong> adresine gönderildi.<br />
