@@ -5,6 +5,7 @@ import { Card, Input, Select, Button, Alert, Icon, Badge, ChipButton, StatTile, 
 import { API_URL } from "../App";
 import PositionManager from "./PositionManager";
 import WalkinPanel from "./WalkinPanel";
+import CvPool from "./CvPool";
 
 const STATUS_TONE = { pending: "yellow", completed: "green" };
 const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
@@ -349,11 +350,13 @@ export default function AdminDashboard() {
             { key: "candidates", label: "Adaylar", iconName: "users" },
             { key: "positions", label: "Pozisyonlar", iconName: "briefcase" },
             { key: "walkin", label: "Hızlı Giriş", iconName: "plus" },
+            { key: "cvpool", label: "CV Havuzu", iconName: "file" },
           ]}
         />
 
         {tab === "positions" && <PositionManager token={token} />}
         {tab === "walkin" && <WalkinPanel token={token} />}
+        {tab === "cvpool" && <CvPool token={token} />}
         {tab === "candidates" && (
         <>
         {success && <Alert type="success">{success}</Alert>}
