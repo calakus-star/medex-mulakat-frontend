@@ -30,6 +30,17 @@ const normalizeRecommendation = (score, recommendation) => {
   return "İşe Al";
 };
 
+const nextAction = (c, rec) => {
+  if (c.status !== "completed") return { text: "Adayın başlamasını bekleyin", tone: "yellow" };
+  if (c.terminated_reason) return { text: "İhlal raporunu incele", tone: "red" };
+  if (rec === "İşe Al") return { text: "İşe alım kararını onayla", tone: "green" };
+  if (rec === "Reddet") return { text: "Red kararını onayla", tone: "red" };
+  if (rec === "Değerlendirmeye Al") return { text: "Raporu incele", tone: "yellow" };
+  return { text: "Detayları görüntüle", tone: "neutral" };
+};
+
+const csvEscape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
 const emptyForm = { name: "", email: "", phone: "", positionGroup: "", position: "", level: 1, depth_tier: "standart", interview_language: "tr", report_language: "tr", education: "", university: "", department: "", experience_years: 0, ai_note: "" };
 
 export default function AdminDashboard() {
@@ -76,6 +87,24 @@ export default function AdminDashboard() {
     } catch (e) {
       if (e.response?.status === 401) { navigate("/admin"); }
     }
+  };
+
+  const exportCsv = () => {
+    const header = ["Ad Soyad", "Telefon", "E-posta", "Pozisyon", "Durum", "Skor", "Öneri", "Sonraki Aksiyon"];
+    const lines = filteredGroups.map(g => {
+      const c = g.latest;
+      const rec = normalizeRecommendation(c.score, c.recommendation);
+      return [c.name, c.phone || "-", c.email || "-", c.position, STATUS_LABELS[c.status] || c.status, formatScore(c.score), rec, nextAction(c, rec).text]
+        .map(csvEscape).join(",");
+    });
+    const csv = [header.map(csvEscape).join(","), ...lines].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `adaylar-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const cancelForm = () => {
@@ -289,12 +318,15 @@ export default function AdminDashboard() {
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
             <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink }}>Adaylar</div>
-            <div style={{ maxWidth: 280, width: "100%" }}>
-              <input
-                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                placeholder="İsim, e-posta, telefon veya pozisyon ara..."
-                style={{ width: "100%", padding: "8px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: FONT, boxSizing: "border-box" }}
-              />
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ maxWidth: 280, width: "100%" }}>
+                <input
+                  value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="İsim, e-posta, telefon veya pozisyon ara..."
+                  style={{ width: "100%", padding: "8px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: FONT, boxSizing: "border-box" }}
+                />
+              </div>
+              <Button variant="secondary" onClick={exportCsv} disabled={filteredGroups.length === 0}>Excel</Button>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
@@ -306,10 +338,11 @@ export default function AdminDashboard() {
           {filteredGroups.length === 0 ? (
             <div style={{ textAlign: "center", color: colors.muted, padding: 40 }}>Aday bulunamadı</div>
           ) : (
-            <Table columns={["Kişi", "Telefon", "Pozisyon", "Durum", "Skor", "Öneri", ""]}>
+            <Table columns={["Kişi", "Telefon", "Pozisyon", "Durum", "Skor", "Öneri", "Sonraki Aksiyon"]}>
               {filteredGroups.map(g => {
                 const c = g.latest;
                 const rec = normalizeRecommendation(c.score, c.recommendation);
+                const action = nextAction(c, rec);
                 return (
                   <tr
                     key={g.key}
@@ -337,7 +370,13 @@ export default function AdminDashboard() {
                     <td style={{ padding: "10px 12px" }}>
                       {rec !== "-" ? <Badge tone={REC_TONE[rec] || "neutral"}>{rec}</Badge> : "-"}
                     </td>
-                    <td style={{ padding: "10px 12px", color: colors.mutedLight, textAlign: "center" }}>→</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: colors.inkSoft, fontWeight: 600 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", flex: "none", background: colors[action.tone] || colors.mutedLight }} />
+                        {action.text}
+                        <span style={{ color: colors.mutedLight, marginLeft: "auto" }}>→</span>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
