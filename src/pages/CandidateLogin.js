@@ -17,8 +17,8 @@ export default function CandidateLogin() {
       const res = await axios.post(`${API_URL}/api/candidate/login`, { username, password });
       localStorage.setItem("candidate_token", res.data.token);
       localStorage.setItem("candidate_info", JSON.stringify(res.data.candidate));
-      // L2: tamamen sesli (OpenAI Realtime) akış — ayrı sayfa. L1/L3: mevcut yazılı/hibrit akış.
-      navigate(res.data.candidate?.level === 2 ? "/mulakat/sesli" : "/mulakat/baslat");
+      // L2/L3: tamamen sesli (OpenAI Realtime) akış — ayrı sayfa. L1: yazılı akış.
+      navigate([2, 3].includes(res.data.candidate?.level) ? "/mulakat/sesli" : "/mulakat/baslat");
     } catch (e) {
       setError(e.response?.data?.detail || "Giriş başarısız");
     }
