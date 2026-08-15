@@ -131,13 +131,18 @@ export default function RealtimeInterview() {
     output_tokens: 0,
     audio_input_tokens: 0,
     audio_output_tokens: 0,
+    cached_input_tokens: 0,
+    cached_audio_input_tokens: 0,
     response_count: 0,
   });
   // En son backend'e (heartbeat veya final) gönderilmiş kümülatif usage — delta hesaplamak için.
-  const syncedUsageRef = useRef({ input_tokens: 0, output_tokens: 0, audio_input_tokens: 0, audio_output_tokens: 0 });
+  const syncedUsageRef = useRef({ input_tokens: 0, output_tokens: 0, audio_input_tokens: 0, audio_output_tokens: 0, cached_input_tokens: 0, cached_audio_input_tokens: 0 });
   const heartbeatRef = useRef(null);
   const endInterviewHandledRef = useRef(false); // aynı end_interview tool call'ı 2 farklı event'ten çift işlememek için
   const coverageThresholdRef = useRef(60); // depth_tier'a göre backend'den gelen kriter kapsanma eşiği
+  // /api/realtime/session yanıtındaki AI_PRICING_PER_1M satırı — maliyet formülü SADECE burayı okur,
+  // backend'deki fiyat tablosuyla iki ayrı kopya olarak sapmasın diye kendi rakamını taşımaz.
+  const pricingRef = useRef({});
   const criteriaNamesRef = useRef([]); // pozisyonun kriter adları — kapsanma kontrolü için
   // BUG FIX: L2 (sesli) mülakatta kamera açılıyordu ama hiçbir yerde kare yakalanıp
   // backend'e gönderilmiyordu (bu mantık sadece L1/metin mülakatında vardı). Aynı deseni
@@ -332,28 +337,53 @@ export default function RealtimeInterview() {
     transcriptRef.current.push({ role, text: text.trim() });
   };
 
-  const estimateRealtimeCost = (u) => (
-    (u.input_tokens * 0.6 + u.output_tokens * 2.4 +
-     u.audio_input_tokens * 10 + u.audio_output_tokens * 20) / 1000000
-  );
+  // Fiyat backend'in AI_PRICING_PER_1M'inden gelir (pricingRef, session açılışında dolduruluyor) —
+  // burada sabit sayı YOK, tek kaynak backend. cached_* alanları input/audio_input'ın ALT KÜMESİDİR.
+  const estimateRealtimeCost = (u) => {
+    const rates = pricingRef.current || {};
+    const cachedInput = Math.min(u.cached_input_tokens || 0, u.input_tokens);
+    const cachedAudioInput = Math.min(u.cached_audio_input_tokens || 0, u.audio_input_tokens);
+    const freshInput = Math.max(0, u.input_tokens - cachedInput);
+    const freshAudioInput = Math.max(0, u.audio_input_tokens - cachedAudioInput);
+    return (
+      freshInput * (rates.input ?? 0) +
+      cachedInput * (rates.input_cached ?? rates.input ?? 0) +
+      u.output_tokens * (rates.output ?? 0) +
+      freshAudioInput * (rates.audio_input ?? 0) +
+      cachedAudioInput * (rates.audio_input_cached ?? rates.audio_input ?? 0) +
+      u.audio_output_tokens * (rates.audio_output ?? 0)
+    ) / 1000000;
+  };
 
   const addRealtimeUsage = (usage) => {
     if (!usage) return;
     const safeNum = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
     const detailsIn = usage.input_token_details || usage.input_tokens_details || {};
     const detailsOut = usage.output_token_details || usage.output_tokens_details || {};
+    const cachedDetails = detailsIn.cached_tokens_details || detailsIn.cached_tokens_detail || {};
     const inputTokens = safeNum(usage.input_tokens) || safeNum(usage.prompt_tokens);
     const outputTokens = safeNum(usage.output_tokens) || safeNum(usage.completion_tokens);
     const audioInput = safeNum(detailsIn.audio_tokens || detailsIn.audio);
     const audioOutput = safeNum(detailsOut.audio_tokens || detailsOut.audio);
+    // OpenAI Realtime usage şeması: input_token_details.cached_tokens = TOPLAM cache'li girdi
+    // (metin+ses); cached_tokens_details.{text_tokens,audio_tokens} ayrımı varsa onu kullan,
+    // yoksa toplam cache'i tamamen metin girdisine ait say (ses cache'ini olduğundan düşük
+    // göstermek, olduğundan yüksek göstermekten daha güvenli bir varsayılan).
+    const cachedAudioInput = safeNum(cachedDetails.audio_tokens || cachedDetails.audio);
+    const cachedTotal = safeNum(detailsIn.cached_tokens);
+    const cachedTextInput = cachedDetails.text_tokens !== undefined
+      ? safeNum(cachedDetails.text_tokens)
+      : Math.max(0, cachedTotal - cachedAudioInput);
     realtimeUsageRef.current.input_tokens += Math.max(0, inputTokens - audioInput);
     realtimeUsageRef.current.output_tokens += Math.max(0, outputTokens - audioOutput);
     realtimeUsageRef.current.audio_input_tokens += audioInput;
     realtimeUsageRef.current.audio_output_tokens += audioOutput;
+    realtimeUsageRef.current.cached_input_tokens += cachedTextInput;
+    realtimeUsageRef.current.cached_audio_input_tokens += cachedAudioInput;
     realtimeUsageRef.current.response_count += 1;
     const cost = estimateRealtimeCost(realtimeUsageRef.current);
     setEstimatedCost(cost);
-    logDebug(`Usage yakalandı: in=${inputTokens}, out=${outputTokens}, audio_in=${audioInput}, audio_out=${audioOutput}, tahmini=$${cost.toFixed(4)}`);
+    logDebug(`Usage yakalandı: in=${inputTokens}, out=${outputTokens}, audio_in=${audioInput}, audio_out=${audioOutput}, cached_in=${cachedTextInput}, cached_audio_in=${cachedAudioInput}, tahmini=$${cost.toFixed(4)}`);
 
     // Maliyet yalnızca izlenir; görüşme parasal eşik nedeniyle ASLA kesilmez.
     // Tasarruf, kısa mülakatçı cevapları ve bağlam yönetimiyle sağlanır.
@@ -369,6 +399,8 @@ export default function RealtimeInterview() {
       output_tokens: Math.max(0, cur.output_tokens - prev.output_tokens),
       audio_input_tokens: Math.max(0, cur.audio_input_tokens - prev.audio_input_tokens),
       audio_output_tokens: Math.max(0, cur.audio_output_tokens - prev.audio_output_tokens),
+      cached_input_tokens: Math.max(0, cur.cached_input_tokens - prev.cached_input_tokens),
+      cached_audio_input_tokens: Math.max(0, cur.cached_audio_input_tokens - prev.cached_audio_input_tokens),
     };
   };
   const markUsageSynced = () => { syncedUsageRef.current = { ...realtimeUsageRef.current }; };
@@ -618,6 +650,7 @@ export default function RealtimeInterview() {
       const model = sessionRes.data.model;
       coverageThresholdRef.current = sessionRes.data.coverage_threshold || 60;
       criteriaNamesRef.current = sessionRes.data.criteria_names || [];
+      pricingRef.current = sessionRes.data.pricing || {};
       logDebug(`Ephemeral key alındı. Model: ${model}. Key uzunluğu: ${ephemeralKey ? ephemeralKey.length : 0}`);
       if (!ephemeralKey) logDebug("⚠️ UYARI: client_secret boş geldi — backend session yanıtını kontrol et.");
 

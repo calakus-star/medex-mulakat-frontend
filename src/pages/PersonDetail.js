@@ -416,7 +416,11 @@ export default function PersonDetail() {
               <div style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 14, marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>AI Kullanım Logu</div>
                 <div style={{ fontSize: 12, color: colors.muted }}>
-                  Toplam: {(selectedReport.usage_total_tokens || 0).toLocaleString("tr-TR")} token · <span style={{ fontWeight: 700, color: colors.ink }}>~${(selectedReport.usage_total_cost_usd || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+                  Toplam: {(selectedReport.usage_total_tokens || 0).toLocaleString("tr-TR")} token
+                  {selectedReport.usage_cache_hit_pct != null && (
+                    <> · Cache: <span style={{ fontWeight: 700, color: colors.green }}>%{selectedReport.usage_cache_hit_pct}</span> ({(selectedReport.usage_cached_input_tokens || 0).toLocaleString("tr-TR")} token)</>
+                  )}
+                  {" · "}<span style={{ fontWeight: 700, color: colors.ink }}>~${(selectedReport.usage_total_cost_usd || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
                 </div>
               </div>
             )}
