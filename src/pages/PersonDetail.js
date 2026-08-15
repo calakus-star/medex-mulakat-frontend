@@ -381,9 +381,23 @@ export default function PersonDetail() {
                 <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
                   {selectedReport.name} · {selectedReport.email || "E-posta yok"} · {selectedReport.phone || "Telefon yok"}
                 </div>
-                <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
-                  Eğitim: {selectedReport.education || "-"} · Üniversite: {selectedReport.university || "-"} · Bölüm: {selectedReport.department || "-"} · Deneyim: {selectedReport.experience_years ?? 0} yıl
-                </div>
+                {(() => {
+                  // Form beyanı (candidates.education/university/department/experience_years) ile
+                  // CV'den çıkarım (rapor gövdesi/Standart CV) bilinçli olarak ayrı tutulur — burada
+                  // uzlaştırılmaz. Boş alan hiç gösterilmez; PDF'teki "BAŞVURU FORMU BEYANI" bloğuyla
+                  // aynı kaynak mantığı.
+                  const declared = [
+                    selectedReport.education && `Eğitim: ${selectedReport.education}`,
+                    selectedReport.experience_years ? `Deneyim: ${selectedReport.experience_years} yıl` : null,
+                    selectedReport.university && `Üniversite: ${selectedReport.university}`,
+                    selectedReport.department && `Bölüm: ${selectedReport.department}`,
+                  ].filter(Boolean);
+                  return declared.length > 0 ? (
+                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
+                      <span style={{ fontWeight: 700, color: colors.yellow }}>Başvuru Formu Beyanı:</span> {declared.join(" · ")}
+                    </div>
+                  ) : null;
+                })()}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadPdf(selectedReport.candidate_id, selectedReport.name)}>PDF İndir</Button>
@@ -439,7 +453,7 @@ export default function PersonDetail() {
             )}
             {selectedReport.standard_cv && (
               <>
-                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>Standart CV</div>
+                <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>Standart CV (CV'den Çıkarım)</div>
                 <pre style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 16, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.7, fontFamily: FONT }}>{selectedReport.standard_cv}</pre>
               </>
             )}
