@@ -8,6 +8,12 @@ const formatTime = (s) => {
   return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, "0")}`;
 };
 
+// Faz D1: OpenAI Realtime oturumları platform tarafından en fazla 60 dk sürüyor. L3 "derin" hedefi
+// (LEVEL_CONFIG[3] × DEPTH_TIER_CONFIG["derin"] = 30×1.6 = 48 dk) adaptif ve sabit tavansız olduğu
+// için pratikte bu sınıra yaklaşabilir. 55 dk'da (5 dk pay) AI'a kapanışı tamamlaması söylenir;
+// yalnızca Level 3'te devreye girer, L1/L2 hiç etkilenmez.
+const REALTIME_L3_SAFE_LIMIT_SECONDS = 55 * 60;
+
 // ==== Konuşma durumu görsel göstergesi: sese tepki veren tek merkezi halka (metin etiketi yok) ====
 function VoiceOrb({ phase, level }) {
   const config = {
@@ -126,6 +132,8 @@ export default function RealtimeInterview() {
   const remotePlaybackGainRef = useRef(null);
   const closingFallbackTimerRef = useRef(null);
   const levelRafRef = useRef(null);
+  const hardCloseTriggeredRef = useRef(false); // Faz D1: 55 dk güvenli kapanışı bir kez tetikle
+  const realtimeEventsBufferRef = useRef([]); // Faz D1: sync/report ile backend'e taşınacak ham olaylar
   const realtimeUsageRef = useRef({
     input_tokens: 0,
     output_tokens: 0,
@@ -173,11 +181,32 @@ export default function RealtimeInterview() {
       const value = Math.max(0, (Date.now() - startTsRef.current) / 1000);
       elapsedRef.current = value;
       setElapsed(Math.floor(value));
+      // Faz D1 GÜVENLİ KAPANIŞ — SADECE Level 3: platform 60 dk sınırına yaklaşılınca AI'a
+      // kapanışı tamamlamasını söyleriz; end_interview çağırmazsa (bağlantı/gecikme riski) kısa
+      // bir bekleme sonrası zorla rapor üretilir. L1/L2 bu koşula hiç girmez, hiçbir etkisi yok.
+      if (candidate?.level === 3 && value >= REALTIME_L3_SAFE_LIMIT_SECONDS && !hardCloseTriggeredRef.current && !finishedRef.current) {
+        hardCloseTriggeredRef.current = true;
+        logDebug(`⏱️ Güvenli kapanış tetiklendi — ${Math.floor(REALTIME_L3_SAFE_LIMIT_SECONDS / 60)} dk sınırına ulaşıldı (platform sınırı 60 dk).`);
+        try {
+          if (dcRef.current?.readyState === "open") {
+            dcRef.current.send(JSON.stringify({
+              type: "response.create",
+              response: {
+                instructions: "Süre sınırına yaklaşıldı. Mülakatı hemen sonlandırman gerekiyor: önce kısa bir kapanış sorusu sor (\"Eklemek veya öne çıkarmak istediğiniz başka bir şey var mı?\"), adayın cevabını dinle, kısaca teşekkür et ve end_interview fonksiyonunu reason='tamamlandı' ile hemen çağır."
+              }
+            }));
+          }
+        } catch (err) { /* yoksay */ }
+        if (closingFallbackTimerRef.current) clearTimeout(closingFallbackTimerRef.current);
+        closingFallbackTimerRef.current = setTimeout(() => {
+          if (!finishedRef.current) submitReportRef.current("tamamlandı");
+        }, 25000);
+      }
     };
     tick();
     const id = window.setInterval(tick, 500);
     return () => window.clearInterval(id);
-  }, [step, finished]);
+  }, [step, finished, candidate]);
 
   // ===== Kamera izni =====
   const requestCamera = async () => {
@@ -337,6 +366,19 @@ export default function RealtimeInterview() {
     transcriptRef.current.push({ role, text: text.trim() });
   };
 
+  // Faz D1: ham Realtime olaylarını (şu ana kadar sadece konsola yazılıp kayboluyordu) backend'e
+  // taşınmak üzere tamponlar. Metrik HESAPLAMAZ — sadece toplar; D2 bu veriden metrik çıkaracak.
+  const pushRealtimeEvent = (type, data) => {
+    realtimeEventsBufferRef.current.push({
+      type, data: data || {}, elapsed_ms: Math.round((elapsedRef.current || 0) * 1000),
+    });
+  };
+  // splice ile ATOMİK boşaltma: gönderim sırasında (await beklerken) yeni pushRealtimeEvent
+  // çağrıları aynı diziye değil, splice sonrası kalan (boş) diziye eklenir — kayıp/çift kayıt olmaz.
+  // Gönderim başarısız olursa o turdaki olaylar kaybolur (usage_delta'nın aksine kümülatif değil) —
+  // D1 kapsamında kabul edilebilir, sadece gözlemlenebilirlik verisi, rapor/maliyet etkilemez.
+  const drainRealtimeEvents = () => realtimeEventsBufferRef.current.splice(0, realtimeEventsBufferRef.current.length);
+
   // Fiyat backend'in AI_PRICING_PER_1M'inden gelir (pricingRef, session açılışında dolduruluyor) —
   // burada sabit sayı YOK, tek kaynak backend. cached_* alanları input/audio_input'ın ALT KÜMESİDİR.
   const estimateRealtimeCost = (u) => {
@@ -414,6 +456,7 @@ export default function RealtimeInterview() {
   const syncProgress = useCallback(async () => {
     if (finishedRef.current || !candidate?.id) return;
     const delta = computeUsageDelta();
+    const events = drainRealtimeEvents();
     try {
       await axios.post(`${API_URL}/api/realtime/sync`, {
         candidate_id: candidate.id,
@@ -421,6 +464,7 @@ export default function RealtimeInterview() {
         duration_seconds: Math.floor(elapsedRef.current),
         answered_count: answeredCountRef.current,
         usage_delta: delta,
+        events,
       }, { headers: { Authorization: `Bearer ${token}` } });
       markUsageSynced();
     } catch (e) {
@@ -501,6 +545,7 @@ export default function RealtimeInterview() {
         duration_seconds: Math.floor(elapsedRef.current),
         answered_count: answeredCountRef.current,
         usage_delta: delta,
+        events: drainRealtimeEvents(),
         token,
       });
       try {
@@ -535,6 +580,7 @@ export default function RealtimeInterview() {
         answered_count: answeredCountRef.current,
         end_reason: endReason,
         realtime_usage: finalUsageDelta,
+        events: drainRealtimeEvents(),
       }, { headers: { Authorization: `Bearer ${token}` } });
       markUsageSynced();
       logDebug("Finalize/rapor tamamlandı. Skor=" + (res.data?.score ?? "-") + ", öneri=" + (res.data?.recommendation ?? "-"));
@@ -871,7 +917,20 @@ export default function RealtimeInterview() {
   // ===== Realtime data channel olaylarını işle: barge-in, transcript, end_interview =====
   const handleRealtimeEvent = (evt) => {
     switch (evt.type) {
+      case "session.created":
+        // Faz D1: session.created.session.expires_at izlenir (platform 60 dk sınırına ne kadar
+        // kaldığının gözlemlenebilirliği için) — bağlantı kurulumuna dokunmuyor, sadece kaydediyor.
+        pushRealtimeEvent("session.created", { expires_at: evt.session?.expires_at });
+        logDebug(`Session oluşturuldu. expires_at=${evt.session?.expires_at || "yok"}`);
+        break;
+      // Yalnızca client'ın kendi gönderdiği conversation.item.truncate'e karşılık gelir (barge-in
+      // kesmesi) — otomatik bağlam-penceresi budaması için AYRI bir bildirim yoktur (bkz. Faz D1
+      // raporu). Yine de gerçekleşirse savunma amaçlı kaydedilir.
+      case "conversation.item.truncated":
+        pushRealtimeEvent("conversation.item.truncated", { audio_end_ms: evt.audio_end_ms, item_id: evt.item_id, content_index: evt.content_index });
+        break;
       case "input_audio_buffer.speech_started": {
+        pushRealtimeEvent("input_audio_buffer.speech_started", { audio_start_ms: evt.audio_start_ms, item_id: evt.item_id });
         candidateSpeechActiveRef.current = true;
         setPhase("listening"); phaseRef.current = "listening";
         // TV, masa, nefes veya kısa çevre sesi AI'ı kesmesin. Gerçek araya giriş için
@@ -894,6 +953,7 @@ export default function RealtimeInterview() {
         break;
       }
       case "input_audio_buffer.speech_stopped":
+        pushRealtimeEvent("input_audio_buffer.speech_stopped", { audio_end_ms: evt.audio_end_ms, item_id: evt.item_id });
         candidateSpeechActiveRef.current = false;
         if (bargeInConfirmTimerRef.current) { clearTimeout(bargeInConfirmTimerRef.current); bargeInConfirmTimerRef.current = null; }
         // semantic_vad adayın cümlesinin anlam olarak bitip bitmediğine göre bu olayı tetikler.
@@ -927,6 +987,7 @@ export default function RealtimeInterview() {
         break;
       case "response.done":
         hasActiveResponseRef.current = false;
+        pushRealtimeEvent("response.done", { usage: evt.response?.usage || evt.usage || {} });
         addRealtimeUsage(evt.response?.usage || evt.usage);
         setPhase("thinking"); phaseRef.current = "thinking";
         // İlk açılış tamamlanınca aday mikrofonunu aç. Açılıştan önce ortam sesi modele gitmez.
