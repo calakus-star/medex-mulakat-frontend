@@ -286,6 +286,8 @@ export default function PersonDetail() {
                     <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>{a.created_at}</div>
                     <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                       <Badge tone={STATUS_TONE[a.status] || "yellow"}>{STATUS_LABELS[a.status] || a.status}</Badge>
+                      {a.processing_status === "processing" && <Badge tone="yellow">⏳ Rapor Hazırlanıyor</Badge>}
+                      {a.processing_status === "failed" && <Badge tone="red" title={a.processing_error || ""}>⚠ Rapor Hatası</Badge>}
                       {a.score !== null && a.score !== undefined && <span style={{ fontWeight: 700, color: colors.ink, fontSize: 13 }}>{a.score}/100</span>}
                       {a.recommendation && <Badge tone={REC_TONE[a.recommendation] || "neutral"}>{a.recommendation}</Badge>}
                       {a.reapply_allowed ? <Badge tone="green">Tekrar başvuru açık</Badge> : null}
@@ -296,6 +298,12 @@ export default function PersonDetail() {
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
                   {a.status === "completed" && (
                     <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => viewReport(a.candidate_id)}>Rapor</Button>
+                  )}
+                  {a.status !== "completed" && (a.processing_status === "processing" || a.processing_status === "failed") && (
+                    <Button variant="secondary" disabled style={{ padding: "6px 12px", fontSize: 12, opacity: 0.5, cursor: "not-allowed" }}
+                      title={a.processing_status === "failed" ? (a.processing_error || "Rapor üretimi başarısız oldu") : "Rapor hazır olunca aktif olacak"}>
+                      {a.processing_status === "processing" ? "Rapor Hazırlanıyor…" : "Rapor Hatası"}
+                    </Button>
                   )}
                   {a.status === "pending" && (
                     <>

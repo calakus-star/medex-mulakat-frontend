@@ -999,7 +999,7 @@ export default function Interview() {
           </div>
         </div>
 
-        {finished && score !== null && (
+        {finished && (
           <div style={{ background: colors.white, borderRadius: 12, padding: 24, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", textAlign: "center" }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>{terminated ? "⚠️" : "🎉"}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: colors.navy, marginBottom: 8 }}>

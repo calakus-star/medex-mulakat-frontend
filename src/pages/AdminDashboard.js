@@ -31,7 +31,11 @@ const normalizeRecommendation = (score, recommendation) => {
 };
 
 const nextAction = (c, rec) => {
-  if (c.status !== "completed") return { text: "Adayın başlamasını bekleyin", tone: "yellow" };
+  if (c.status !== "completed") {
+    if (c.processing_status === "processing") return { text: "Rapor hazırlanıyor, bekleyin", tone: "yellow" };
+    if (c.processing_status === "failed") return { text: "Rapor hatası — tekrar deneyin", tone: "red" };
+    return { text: "Adayın başlamasını bekleyin", tone: "yellow" };
+  }
   if (c.terminated_reason) return { text: "İhlal raporunu incele", tone: "red" };
   if (rec === "İşe Al") return { text: "İşe alım kararını onayla", tone: "green" };
   if (rec === "Reddet") return { text: "Red kararını onayla", tone: "red" };
@@ -365,6 +369,12 @@ export default function AdminDashboard() {
                     </td>
                     <td style={{ padding: "10px 12px" }}>
                       <Badge tone={STATUS_TONE[c.status] || "yellow"}>{STATUS_LABELS[c.status] || c.status}</Badge>
+                      {c.status !== "completed" && c.processing_status === "processing" && (
+                        <div style={{ marginTop: 4 }}><Badge tone="yellow">⏳ Rapor Hazırlanıyor</Badge></div>
+                      )}
+                      {c.status !== "completed" && c.processing_status === "failed" && (
+                        <div style={{ marginTop: 4 }}><Badge tone="red" title={c.processing_error || ""}>⚠ Rapor Hatası</Badge></div>
+                      )}
                     </td>
                     <td style={{ padding: "10px 12px", fontWeight: 700, color: colors.ink }}>{formatScore(c.score)}</td>
                     <td style={{ padding: "10px 12px" }}>
