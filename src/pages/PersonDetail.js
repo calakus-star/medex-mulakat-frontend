@@ -27,7 +27,19 @@ function ReportText({ text }) {
   );
 }
 
-const emptyEditForm = { positionGroup: "", position: "", level: 1, depth_tier: "standart", interview_language: "tr", report_language: "tr", education: "", university: "", department: "", experience_years: 0, ai_note: "" };
+const emptyEditForm = { name: "", email: "", phone: "", positionGroup: "", position: "", level: 1, depth_tier: "standart", interview_language: "tr", report_language: "tr", education: "", university: "", department: "", experience_years: 0, ai_note: "" };
+
+const formatApiError = (e, fallback) => {
+  const detail = e?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => {
+      const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : "alan";
+      return `${field}: ${d.msg || "geçersiz değer"}`;
+    }).join("; ");
+  }
+  return fallback;
+};
 
 export default function PersonDetail() {
   const { id } = useParams();
@@ -207,6 +219,7 @@ export default function PersonDetail() {
   const startEditAttempt = (a) => {
     setEditingAttemptId(a.candidate_id);
     setEditForm({
+      name: a.name || "", email: a.email || "", phone: a.phone || "",
       positionGroup: findGroupForPosition(a.position || ""), position: a.position || "",
       level: a.level || 1, depth_tier: a.depth_tier || "standart",
       interview_language: a.interview_language || "tr", report_language: a.report_language || "tr",
@@ -219,21 +232,59 @@ export default function PersonDetail() {
 
   const saveEditAttempt = async () => {
     setLoading(true); setError(""); setSuccess("");
+    // Backend'e sadece gerçek aday alanları gönderilir; positionGroup formun kendi
+    // yardımcı state'i, CandidateUpdate modelinde karşılığı yok.
+    const { positionGroup, ...patchBody } = editForm;
     try {
-      await axios.patch(`${API_URL}/api/admin/candidates/${editingAttemptId}`, editForm, authHeaders);
-      if (editCvFile) {
+      await axios.patch(`${API_URL}/api/admin/candidates/${editingAttemptId}`, patchBody, { ...authHeaders, timeout: 20000 });
+    } catch (e) {
+      if (e.code === "ECONNABORTED") {
+        // TIMEOUT: istek backend'e ulaşıp orada tamamlanmış olabilir, biz sadece yanıtı
+        // görmedik — "kaydedilemedi" demek yanlış bilgi olur. Gerçek durumu sunucudan
+        // tazeleyip gösteriyoruz, CV bu belirsiz durumda gönderilmiyor.
+        setError("Sunucudan yanıt gelmedi, kaydın durumu bilinmiyor — sayfa yenilenecek.");
+        setEditingAttemptId(null);
+        fetchAll();
+        setLoading(false);
+        return;
+      }
+      // ATOMİKLİK: kayıt (PATCH) başarısızsa CV hiç gönderilmez — seçili bir dosya olsa bile.
+      const base = formatApiError(e, "Aday bilgileri kaydedilemedi.");
+      setError(editCvFile ? `${base} Kayıt yapılamadı, CV de yüklenmedi.` : base);
+      setLoading(false);
+      return;
+    }
+
+    let cvWarning = "";
+    if (editCvFile) {
+      try {
         const fd = new FormData();
         fd.append("file", editCvFile);
-        await axios.post(`${API_URL}/api/admin/candidates/${editingAttemptId}/upload-cv`, fd, {
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }
+        const cvRes = await axios.post(`${API_URL}/api/admin/candidates/${editingAttemptId}/upload-cv`, fd, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }, timeout: 30000
         });
+        if (cvRes.data?.cv_ownership_warning) cvWarning = ` ⚠ ${cvRes.data.cv_ownership_warning}`;
+        else if (cvRes.data?.cv_ownership_note) cvWarning = ` ℹ ${cvRes.data.cv_ownership_note}`;
+      } catch (e) {
+        if (e.code === "ECONNABORTED") {
+          // Aday bilgileri (PATCH) zaten kaydedildi ve bunu biliyoruz; CV'nin sunucuda
+          // gerçekten işlenip işlenmediği ise belirsiz — yanlış "başarısız" demek yerine
+          // gerçek durumu sunucudan tazeliyoruz.
+          setError("Sunucudan yanıt gelmedi, CV'nin durumu bilinmiyor — sayfa yenilenecek.");
+        } else {
+          // Aday bilgileri zaten kaydedildi; sadece CV yüklemesi başarısız oldu — ayrı ve net bir mesaj.
+          setError(`Aday bilgileri kaydedildi, ancak CV yüklenemedi: ${formatApiError(e, "bilinmeyen hata")}`);
+        }
+        setEditingAttemptId(null);
+        fetchAll();
+        setLoading(false);
+        return;
       }
-      setSuccess("Aday bilgileri güncellendi");
-      setEditingAttemptId(null);
-      fetchAll();
-    } catch (e) {
-      setError(e.response?.data?.detail || "Hata oluştu");
     }
+
+    setSuccess(`Aday bilgileri güncellendi${cvWarning}`);
+    setEditingAttemptId(null);
+    fetchAll();
     setLoading(false);
   };
 
@@ -324,6 +375,9 @@ export default function PersonDetail() {
                 {editingAttemptId === a.candidate_id && (
                   <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.border}` }}>
                     <div className="admin-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <Input label="Ad Soyad" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+                      <Input label="E-posta" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
+                      <Input label="Telefon" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
                       <Select label="Grup" options={groupOptions} value={editForm.positionGroup} onChange={e => setEditForm({ ...editForm, positionGroup: e.target.value, position: "" })} />
                       <Select label="Pozisyon" options={positionOptionsForGroup(editForm.positionGroup)} value={editForm.position} onChange={e => setEditForm({ ...editForm, position: e.target.value })} disabled={!editForm.positionGroup} />
                       <Select label="Mülakat Seviyesi" options={[{ value: 1, label: "Level 1" }, { value: 2, label: "Level 2" }, { value: 3, label: "Level 3" }]} value={editForm.level} onChange={e => setEditForm({ ...editForm, level: parseInt(e.target.value, 10) })} />
