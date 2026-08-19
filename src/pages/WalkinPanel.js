@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Card, Input, Select, Button, Alert, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
@@ -11,7 +11,7 @@ export default function WalkinPanel({ token }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    axios.get(`${API_URL}/api/admin/positions`, { headers: { Authorization: `Bearer ${token}` } })
+    apiClient.get(`${API_URL}/api/admin/positions`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => {
         const groups = {};
         res.data.filter(p => p.active).forEach(p => {
@@ -26,13 +26,13 @@ export default function WalkinPanel({ token }) {
   const create = async () => {
     setLoading(true); setError(""); setResult(null);
     try {
-      const res = await axios.post(`${API_URL}/api/admin/walkin`, { name: form.name, phone: form.phone, position: form.position, ai_note: form.ai_note, send_email: false }, {
+      const res = await apiClient.post(`${API_URL}/api/admin/walkin`, { name: form.name, phone: form.phone, position: form.position, ai_note: form.ai_note, send_email: false }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setResult(res.data);
       setForm({ name: "", phone: "", position: "", ai_note: "" });
     } catch (e) {
-      setError(e.response?.data?.detail || "Hata oluştu");
+      setError(formatApiError(e, "Walk-in kaydı oluşturulamadı").message);
     }
     setLoading(false);
   };

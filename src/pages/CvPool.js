@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Card, Select, Button, Alert, colors } from "../components/Layout";
 import { API_URL } from "../App";
 
@@ -17,16 +17,16 @@ export default function CvPool({ token }) {
 
   const fetchPool = async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/admin/cv-pool`, authHeaders);
+      const res = await apiClient.get(`${API_URL}/api/admin/cv-pool`, authHeaders);
       setPool(res.data || []);
     } catch (e) {
-      setError(e.response?.data?.detail || "Havuz yüklenemedi");
+      setError(formatApiError(e, "Havuz yüklenemedi").message);
     }
   };
 
   useEffect(() => {
     fetchPool();
-    axios.get(`${API_URL}/api/admin/positions`, authHeaders).then(res => {
+    apiClient.get(`${API_URL}/api/admin/positions`, authHeaders).then(res => {
       setPositionsRaw((Array.isArray(res.data) ? res.data : []).filter(p => p.active));
     });
     // eslint-disable-next-line
@@ -44,12 +44,12 @@ export default function CvPool({ token }) {
     if (!inviteForm.position) return;
     setLoading(true); setError("");
     try {
-      const res = await axios.post(`${API_URL}/api/admin/cv-pool/${inviteFor}/invite`, inviteForm, authHeaders);
+      const res = await apiClient.post(`${API_URL}/api/admin/cv-pool/${inviteFor}/invite`, inviteForm, authHeaders);
       setCredModal(res.data);
       setInviteFor(null);
       fetchPool();
     } catch (e) {
-      setError(e.response?.data?.detail || "Davet gönderilemedi");
+      setError(formatApiError(e, "Davet gönderilemedi").message);
     }
     setLoading(false);
   };

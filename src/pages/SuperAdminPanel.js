@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Card, Input, Button, Alert, colors } from "../components/Layout";
 import { API_URL } from "../App";
 
@@ -22,10 +22,10 @@ export default function SuperAdminPanel({ token }) {
 
   const fetchOrgs = async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/superadmin/organizations`, authHeaders);
+      const res = await apiClient.get(`${API_URL}/api/superadmin/organizations`, authHeaders);
       setOrgs(res.data || []);
     } catch (e) {
-      setError(e.response?.data?.detail || "Kurumlar yüklenemedi");
+      setError(formatApiError(e, "Kurumlar yüklenemedi").message);
     }
   };
 
@@ -35,13 +35,13 @@ export default function SuperAdminPanel({ token }) {
     if (!orgForm.name.trim() || !orgForm.slug.trim()) return;
     setLoading(true); setError(""); setSuccess("");
     try {
-      await axios.post(`${API_URL}/api/superadmin/organizations`, orgForm, authHeaders);
+      await apiClient.post(`${API_URL}/api/superadmin/organizations`, orgForm, authHeaders);
       setSuccess(`"${orgForm.name}" kurumu oluşturuldu, pozisyon kataloğu MedeX şablonundan kopyalandı.`);
       setOrgForm({ name: "", slug: "" });
       setShowOrgForm(false);
       fetchOrgs();
     } catch (e) {
-      setError(e.response?.data?.detail || "Kurum oluşturulamadı");
+      setError(formatApiError(e, "Kurum oluşturulamadı").message);
     }
     setLoading(false);
   };
@@ -52,10 +52,11 @@ export default function SuperAdminPanel({ token }) {
     setAdminFormFor(null);
     if (!orgAdmins[orgId]) {
       try {
-        const res = await axios.get(`${API_URL}/api/superadmin/organizations/${orgId}/admins`, authHeaders);
+        const res = await apiClient.get(`${API_URL}/api/superadmin/organizations/${orgId}/admins`, authHeaders);
         setOrgAdmins(prev => ({ ...prev, [orgId]: res.data || [] }));
       } catch (e) {
         setOrgAdmins(prev => ({ ...prev, [orgId]: [] }));
+        setError(formatApiError(e, "Kurum adminleri yüklenemedi").message);
       }
     }
   };
@@ -70,14 +71,14 @@ export default function SuperAdminPanel({ token }) {
     if (!adminForm.name.trim() || !adminForm.email.trim()) return;
     setLoading(true); setError("");
     try {
-      const res = await axios.post(`${API_URL}/api/superadmin/organizations/${orgId}/admins`, adminForm, authHeaders);
+      const res = await apiClient.post(`${API_URL}/api/superadmin/organizations/${orgId}/admins`, adminForm, authHeaders);
       setCredModal(res.data);
       setAdminFormFor(null);
-      const refreshed = await axios.get(`${API_URL}/api/superadmin/organizations/${orgId}/admins`, authHeaders);
+      const refreshed = await apiClient.get(`${API_URL}/api/superadmin/organizations/${orgId}/admins`, authHeaders);
       setOrgAdmins(prev => ({ ...prev, [orgId]: refreshed.data || [] }));
       fetchOrgs();
     } catch (e) {
-      setError(e.response?.data?.detail || "Admin oluşturulamadı");
+      setError(formatApiError(e, "Admin oluşturulamadı").message);
     }
     setLoading(false);
   };

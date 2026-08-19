@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Header, Card, Input, Button, Alert, colors } from "../components/Layout";
 import { API_URL } from "../App";
 
@@ -14,11 +14,11 @@ export default function AdminLogin() {
   const login = async () => {
     setLoading(true); setError("");
     try {
-      const res = await axios.post(`${API_URL}/api/admin/login`, { email, password });
+      const res = await apiClient.post(`${API_URL}/api/admin/login`, { email, password });
       localStorage.setItem("admin_token", res.data.token);
       navigate("/admin/panel");
     } catch (e) {
-      setError(e.response?.data?.detail || "Giriş başarısız");
+      setError(formatApiError(e, "Giriş başarısız").message);
     }
     setLoading(false);
   };

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Card, Input, Select, Button, Alert, Badge, StatTile, Tabs, Table, Avatar, FilterChip, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 import PositionManager from "./PositionManager";
@@ -67,12 +67,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!token) { navigate("/admin"); return; }
     fetchCandidates();
-    axios.get(`${API_URL}/api/admin/positions`, { headers: { Authorization: `Bearer ${token}` } })
+    apiClient.get(`${API_URL}/api/admin/positions`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => {
         const list = (Array.isArray(res.data) ? res.data : []).filter(p => p.active);
         setPositionsRaw(list);
       });
-    axios.get(`${API_URL}/api/admin/profile`, { headers: { Authorization: `Bearer ${token}` } })
+    apiClient.get(`${API_URL}/api/admin/profile`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => setAdminRole(res.data?.admin_role || null))
       .catch(() => {});
     // eslint-disable-next-line
@@ -84,12 +84,13 @@ export default function AdminDashboard() {
 
   const fetchCandidates = async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/admin/candidates`, {
+      const res = await apiClient.get(`${API_URL}/api/admin/candidates`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCandidates(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
-      if (e.response?.status === 401) { navigate("/admin"); }
+      // 401'de apiClient interceptor'ı zaten yönlendiriyor; burada sadece görünür bir hata bırakıyoruz.
+      setError(formatApiError(e, "Aday listesi yüklenemedi").message);
     }
   };
 
@@ -119,13 +120,13 @@ export default function AdminDashboard() {
   const createCandidate = async () => {
     setLoading(true); setError(""); setSuccess("");
     try {
-      const res = await axios.post(`${API_URL}/api/admin/candidates`, form, {
+      const res = await apiClient.post(`${API_URL}/api/admin/candidates`, form, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (adminCvFile) {
         const fd = new FormData();
         fd.append("file", adminCvFile);
-        await axios.post(`${API_URL}/api/admin/candidates/${res.data.id}/upload-cv`, fd, {
+        await apiClient.post(`${API_URL}/api/admin/candidates/${res.data.id}/upload-cv`, fd, {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }
         });
       }

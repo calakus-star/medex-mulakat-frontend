@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Header, Card, Input, Button, Alert, colors } from "../components/Layout";
 import { API_URL } from "../App";
 
@@ -14,13 +14,13 @@ export default function CandidateLogin() {
   const login = async () => {
     setLoading(true); setError("");
     try {
-      const res = await axios.post(`${API_URL}/api/candidate/login`, { username, password });
+      const res = await apiClient.post(`${API_URL}/api/candidate/login`, { username, password });
       localStorage.setItem("candidate_token", res.data.token);
       localStorage.setItem("candidate_info", JSON.stringify(res.data.candidate));
       // L2/L3: tamamen sesli (OpenAI Realtime) akış — ayrı sayfa. L1: yazılı akış.
       navigate([2, 3].includes(res.data.candidate?.level) ? "/mulakat/sesli" : "/mulakat/baslat");
     } catch (e) {
-      setError(e.response?.data?.detail || "Giriş başarısız");
+      setError(formatApiError(e, "Giriş başarısız").message);
     }
     setLoading(false);
   };

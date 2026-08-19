@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Card, Input, Select, Button, Alert, ChipButton, Badge, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
@@ -17,8 +17,12 @@ export default function PositionManager({ token }) {
   useEffect(() => { fetchPositions(); }, []);
 
   const fetchPositions = async () => {
-    const res = await axios.get(`${API_URL}/api/admin/positions`, { headers: { Authorization: `Bearer ${token}` } });
-    setPositions(res.data);
+    try {
+      const res = await apiClient.get(`${API_URL}/api/admin/positions`, { headers: { Authorization: `Bearer ${token}` } });
+      setPositions(res.data);
+    } catch (e) {
+      setError(formatApiError(e, "Pozisyonlar yüklenemedi").message);
+    }
   };
 
   const totalWeight = form.criteria.reduce((s, c) => s + (parseInt(c.weight) || 0), 0);
@@ -51,21 +55,25 @@ export default function PositionManager({ token }) {
     try {
       const payload = { name: form.name, category: form.category || "Genel", role_description: form.role_description, criteria: form.criteria.map(c => ({ ...c, weight: parseInt(c.weight) || 0 })) };
       if (editing === "new") {
-        await axios.post(`${API_URL}/api/admin/positions`, payload, { headers: { Authorization: `Bearer ${token}` } });
+        await apiClient.post(`${API_URL}/api/admin/positions`, payload, { headers: { Authorization: `Bearer ${token}` } });
       } else {
-        await axios.put(`${API_URL}/api/admin/positions/${editing}`, payload, { headers: { Authorization: `Bearer ${token}` } });
+        await apiClient.put(`${API_URL}/api/admin/positions/${editing}`, payload, { headers: { Authorization: `Bearer ${token}` } });
       }
       setEditing(null);
       fetchPositions();
     } catch (e) {
-      setError(e.response?.data?.detail || "Hata oluştu");
+      setError(formatApiError(e, "Pozisyon kaydedilemedi").message);
     }
   };
 
   const deactivate = async (id) => {
     if (!window.confirm("Bu pozisyonu pasifleştirmek istediğine emin misin?")) return;
-    await axios.delete(`${API_URL}/api/admin/positions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-    fetchPositions();
+    try {
+      await apiClient.delete(`${API_URL}/api/admin/positions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      fetchPositions();
+    } catch (e) {
+      setError(formatApiError(e, "Pozisyon pasifleştirilemedi").message);
+    }
   };
 
   if (editing !== null) {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Header, Card, Input, Select, Button, Alert, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
@@ -19,7 +19,7 @@ export default function GeneralApply() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    axios.get(`${API_URL}/api/positions`).then(res => {
+    apiClient.get(`${API_URL}/api/positions`).then(res => {
       if (res.data.groups) {
         setPositions(Object.entries(res.data.groups).map(([group, items]) => ({
           label: group,
@@ -40,10 +40,11 @@ export default function GeneralApply() {
       Object.entries(form).forEach(([k, v]) => fd.append(k, v ?? ""));
       fd.set("experience_years", parseInt(form.experience_years || 0, 10));
       if (cvFile && !skipCv) fd.append("cv_file", cvFile);
-      await axios.post(`${API_URL}/api/apply`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      await apiClient.post(`${API_URL}/api/apply`, fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 30000 });
       setSuccess(true);
     } catch (e) {
-      setError(e.response?.data?.detail || "Hata oluştu");
+      const { message, timeout } = formatApiError(e, "Başvurunuz gönderilemedi, lütfen tekrar deneyin.");
+      setError(timeout ? "Sunucudan yanıt gelmedi, başvurunuzun durumu bilinmiyor — sayfayı yenileyip tekrar kontrol edin." : message);
     }
     setLoading(false);
   };
