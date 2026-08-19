@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import axios from "axios";
+import apiClient, { formatApiError } from "../apiClient";
 import { Header, Card, Input, Select, Button, Alert, Badge, Modal, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
@@ -29,18 +29,6 @@ function ReportText({ text }) {
 
 const emptyEditForm = { name: "", email: "", phone: "", positionGroup: "", position: "", level: 1, depth_tier: "standart", interview_language: "tr", report_language: "tr", education: "", university: "", department: "", experience_years: 0, ai_note: "" };
 
-const formatApiError = (e, fallback) => {
-  const detail = e?.response?.data?.detail;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail.map(d => {
-      const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : "alan";
-      return `${field}: ${d.msg || "geçersiz değer"}`;
-    }).join("; ");
-  }
-  return fallback;
-};
-
 export default function PersonDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -63,27 +51,29 @@ export default function PersonDetail() {
   const [editingAttemptId, setEditingAttemptId] = useState(null);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [editCvFile, setEditCvFile] = useState(null);
+  // Değişmemiş alanları PATCH gövdesinden dışlayabilmek için formun açılış anlık
+  // görüntüsü — startEditAttempt'te doldurulur, saveEditAttempt'te diff için okunur.
+  const editFormInitialRef = useRef(null);
 
   const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
   const fetchAll = async () => {
     try {
       const [personRes, notesRes] = await Promise.all([
-        axios.get(`${API_URL}/api/admin/persons/${id}`, authHeaders),
-        axios.get(`${API_URL}/api/admin/persons/${id}/notes`, authHeaders),
+        apiClient.get(`${API_URL}/api/admin/persons/${id}`, authHeaders),
+        apiClient.get(`${API_URL}/api/admin/persons/${id}/notes`, authHeaders),
       ]);
       setDetail(personRes.data);
       setNotes(notesRes.data || []);
     } catch (e) {
-      if (e.response?.status === 401) { navigate("/admin"); return; }
-      setError(e.response?.data?.detail || "Kişi bilgileri yüklenemedi");
+      setError(formatApiError(e, "Kişi bilgileri yüklenemedi").message);
     }
   };
 
   useEffect(() => {
     if (!token) { navigate("/admin"); return; }
     fetchAll();
-    axios.get(`${API_URL}/api/admin/positions`, authHeaders).then(res => {
+    apiClient.get(`${API_URL}/api/admin/positions`, authHeaders).then(res => {
       setPositionsRaw((Array.isArray(res.data) ? res.data : []).filter(p => p.active));
     });
     // eslint-disable-next-line
@@ -100,13 +90,13 @@ export default function PersonDetail() {
     if (!noteBody.trim()) return;
     setLoading(true); setError(""); setSuccess("");
     try {
-      await axios.post(`${API_URL}/api/admin/persons/${id}/notes`, { body: noteBody.trim() }, authHeaders);
+      await apiClient.post(`${API_URL}/api/admin/persons/${id}/notes`, { body: noteBody.trim() }, authHeaders);
       setNoteBody("");
-      const notesRes = await axios.get(`${API_URL}/api/admin/persons/${id}/notes`, authHeaders);
+      const notesRes = await apiClient.get(`${API_URL}/api/admin/persons/${id}/notes`, authHeaders);
       setNotes(notesRes.data || []);
       setSuccess("Not eklendi");
     } catch (e) {
-      setError(e.response?.data?.detail || "Not eklenemedi");
+      setError(formatApiError(e, "Not eklenemedi").message);
     }
     setLoading(false);
   };
@@ -114,12 +104,12 @@ export default function PersonDetail() {
   const runEvaluate = async () => {
     setEvaluating(true); setError(""); setSuccess("");
     try {
-      await axios.post(`${API_URL}/api/admin/persons/${id}/evaluate`, {}, authHeaders);
-      const notesRes = await axios.get(`${API_URL}/api/admin/persons/${id}/notes`, authHeaders);
+      await apiClient.post(`${API_URL}/api/admin/persons/${id}/evaluate`, {}, authHeaders);
+      const notesRes = await apiClient.get(`${API_URL}/api/admin/persons/${id}/notes`, authHeaders);
       setNotes(notesRes.data || []);
       setSuccess("Değerlendirme oluşturuldu");
     } catch (e) {
-      setError(e.response?.data?.detail || "Değerlendirme oluşturulamadı");
+      setError(formatApiError(e, "Değerlendirme oluşturulamadı").message);
     }
     setEvaluating(false);
   };
@@ -127,14 +117,14 @@ export default function PersonDetail() {
   const viewReport = async (candidateId) => {
     setModalError("");
     try {
-      const res = await axios.get(`${API_URL}/api/admin/interviews/${candidateId}`, authHeaders);
+      const res = await apiClient.get(`${API_URL}/api/admin/interviews/${candidateId}`, authHeaders);
       setSelectedReport(res.data);
       try {
-        const snapRes = await axios.get(`${API_URL}/api/admin/snapshots/${candidateId}`, authHeaders);
+        const snapRes = await apiClient.get(`${API_URL}/api/admin/snapshots/${candidateId}`, authHeaders);
         setSnapshots(snapRes.data || []);
       } catch (e) {
         setSnapshots([]);
-        setModalError(e.response?.data?.detail || "Kamera kareleri yüklenemedi");
+        setModalError(formatApiError(e, "Kamera kareleri yüklenemedi").message);
       }
     } catch (e) {
       setError("Rapor bulunamadı");
@@ -143,7 +133,7 @@ export default function PersonDetail() {
 
   const downloadPdf = async (candidateId, candidateName = "aday") => {
     try {
-      const res = await axios.get(`${API_URL}/api/admin/interviews/${candidateId}/pdf`, { ...authHeaders, responseType: "blob" });
+      const res = await apiClient.get(`${API_URL}/api/admin/interviews/${candidateId}/pdf`, { ...authHeaders, responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       const link = document.createElement("a");
       link.href = url;
@@ -153,6 +143,12 @@ export default function PersonDetail() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
+      if (e.code === "ECONNABORTED") {
+        setModalError("Sunucudan yanıt gelmedi, PDF indirilemedi — lütfen tekrar deneyin.");
+        return;
+      }
+      // Blob responseType nedeniyle hata gövdesi de Blob geliyor — normal JSON detail
+      // ayrıştırması burada işe yaramaz, önce metne çevrilip ayrıca ayrıştırılıyor.
       let detail = "PDF rapor indirilemedi";
       try {
         if (e.response?.data instanceof Blob) {
@@ -160,85 +156,98 @@ export default function PersonDetail() {
           const parsed = JSON.parse(text);
           if (parsed?.detail) detail = parsed.detail;
         } else if (e.response?.data?.detail) detail = e.response.data.detail;
-      } catch (parseErr) { /* yoksay */ }
+      } catch (parseErr) {
+        console.error("PDF hata gövdesi ayrıştırılamadı:", parseErr);
+      }
       setModalError(detail);
     }
   };
 
   const resendInvite = async (candidateId) => {
     try {
-      const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/resend`, {}, authHeaders);
+      const res = await apiClient.post(`${API_URL}/api/admin/candidates/${candidateId}/resend`, {}, authHeaders);
       if (res.data.mail_sent) setSuccess(`Mail tekrar gönderildi. Kullanıcı: ${res.data.username}`);
       else setCredModal({ username: res.data.username, password: res.data.password });
       fetchAll();
     } catch (e) {
-      setError(e.response?.data?.detail || "Hata oluştu");
+      setError(formatApiError(e, "Davet tekrar gönderilemedi").message);
     }
   };
 
   const showCredentials = async (candidateId) => {
     try {
-      const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/show-credentials`, {}, authHeaders);
+      const res = await apiClient.post(`${API_URL}/api/admin/candidates/${candidateId}/show-credentials`, {}, authHeaders);
       setCredModal({ username: res.data.username, password: res.data.password });
     } catch (e) {
-      setError(e.response?.data?.detail || "Hata oluştu");
+      setError(formatApiError(e, "Giriş bilgileri gösterilemedi").message);
     }
   };
 
   const resetPassword = async (candidateId) => {
     if (!window.confirm("Şifreyi sıfırlamak istediğine emin misin? Eski şifre geçersiz olacak.")) return;
     try {
-      const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/reset-password`, {}, authHeaders);
+      const res = await apiClient.post(`${API_URL}/api/admin/candidates/${candidateId}/reset-password`, {}, authHeaders);
       setCredModal({ username: res.data.username, password: res.data.password });
     } catch (e) {
-      setError("Hata oluştu");
+      setError(formatApiError(e, "Şifre sıfırlanamadı").message);
     }
   };
 
   const deleteCandidate = async (candidateId, name) => {
     if (!window.confirm(`${name} adlı adayın bu denemesini silmek istediğine emin misin? Bu işlem geri alınamaz.`)) return;
     try {
-      await axios.delete(`${API_URL}/api/admin/candidates/${candidateId}`, authHeaders);
+      await apiClient.delete(`${API_URL}/api/admin/candidates/${candidateId}`, authHeaders);
       setSuccess(`Deneme silindi`);
       fetchAll();
     } catch (e) {
-      setError("Silme işlemi başarısız");
+      setError(formatApiError(e, "Silme işlemi başarısız").message);
     }
   };
 
   const toggleReapply = async (candidateId) => {
     try {
-      const res = await axios.post(`${API_URL}/api/admin/candidates/${candidateId}/allow-reapply`, {}, authHeaders);
+      const res = await apiClient.post(`${API_URL}/api/admin/candidates/${candidateId}/allow-reapply`, {}, authHeaders);
       setSuccess(res.data.reapply_allowed ? "Tekrar başvuru izni açıldı" : "Tekrar başvuru izni kapatıldı");
       fetchAll();
     } catch (e) {
-      setError(e.response?.data?.detail || "Tekrar başvuru izni güncellenemedi");
+      setError(formatApiError(e, "Tekrar başvuru izni güncellenemedi").message);
     }
   };
 
   const startEditAttempt = (a) => {
     setEditingAttemptId(a.candidate_id);
-    setEditForm({
+    const initial = {
       name: a.name || "", email: a.email || "", phone: a.phone || "",
       positionGroup: findGroupForPosition(a.position || ""), position: a.position || "",
       level: a.level || 1, depth_tier: a.depth_tier || "standart",
       interview_language: a.interview_language || "tr", report_language: a.report_language || "tr",
       education: a.education || "", university: a.university || "", department: a.department || "",
       experience_years: a.experience_years || 0, ai_note: a.ai_note || "",
-    });
+    };
+    setEditForm(initial);
+    editFormInitialRef.current = initial;
     setEditCvFile(null);
     setError("");
   };
 
   const saveEditAttempt = async () => {
     setLoading(true); setError(""); setSuccess("");
-    // Backend'e sadece gerçek aday alanları gönderilir; positionGroup formun kendi
-    // yardımcı state'i, CandidateUpdate modelinde karşılığı yok.
-    const { positionGroup, ...patchBody } = editForm;
+    // Backend'e sadece gerçek aday alanları gönderilir (positionGroup formun kendi
+    // yardımcı state'i, CandidateUpdate modelinde karşılığı yok) VE sadece formun açılış
+    // anındaki değerinden farklı olan alanlar — dokunulmamış alanlar PATCH'e hiç girmez,
+    // böylece kısmi güncelleme (Aşama 1) fiilen de kısmi kalır.
+    const { positionGroup, ...currentBody } = editForm;
+    const { positionGroup: _initialGroup, ...initialBody } = editFormInitialRef.current || {};
+    const patchBody = {};
+    for (const key of Object.keys(currentBody)) {
+      if (currentBody[key] !== initialBody[key]) patchBody[key] = currentBody[key];
+    }
     try {
-      await axios.patch(`${API_URL}/api/admin/candidates/${editingAttemptId}`, patchBody, { ...authHeaders, timeout: 20000 });
+      // apiClient varsayılan timeout'u (20sn) yeterli — burada ayrıca tekrar tanımlanmıyor.
+      await apiClient.patch(`${API_URL}/api/admin/candidates/${editingAttemptId}`, patchBody, authHeaders);
     } catch (e) {
-      if (e.code === "ECONNABORTED") {
+      const { message, timeout } = formatApiError(e, "Aday bilgileri kaydedilemedi.");
+      if (timeout) {
         // TIMEOUT: istek backend'e ulaşıp orada tamamlanmış olabilir, biz sadece yanıtı
         // görmedik — "kaydedilemedi" demek yanlış bilgi olur. Gerçek durumu sunucudan
         // tazeleyip gösteriyoruz, CV bu belirsiz durumda gönderilmiyor.
@@ -249,8 +258,7 @@ export default function PersonDetail() {
         return;
       }
       // ATOMİKLİK: kayıt (PATCH) başarısızsa CV hiç gönderilmez — seçili bir dosya olsa bile.
-      const base = formatApiError(e, "Aday bilgileri kaydedilemedi.");
-      setError(editCvFile ? `${base} Kayıt yapılamadı, CV de yüklenmedi.` : base);
+      setError(editCvFile ? `${message} Kayıt yapılamadı, CV de yüklenmedi.` : message);
       setLoading(false);
       return;
     }
@@ -260,20 +268,23 @@ export default function PersonDetail() {
       try {
         const fd = new FormData();
         fd.append("file", editCvFile);
-        const cvRes = await axios.post(`${API_URL}/api/admin/candidates/${editingAttemptId}/upload-cv`, fd, {
+        // CV ayrıştırma PATCH'ten daha yavaş olabilir, varsayılan 20sn'nin üzerinde bilinçli
+        // bir üst sınır — apiClient'in varsayılanını burada bilerek geçersiz kılıyoruz.
+        const cvRes = await apiClient.post(`${API_URL}/api/admin/candidates/${editingAttemptId}/upload-cv`, fd, {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }, timeout: 30000
         });
         if (cvRes.data?.cv_ownership_warning) cvWarning = ` ⚠ ${cvRes.data.cv_ownership_warning}`;
         else if (cvRes.data?.cv_ownership_note) cvWarning = ` ℹ ${cvRes.data.cv_ownership_note}`;
       } catch (e) {
-        if (e.code === "ECONNABORTED") {
+        const { message, timeout } = formatApiError(e, "bilinmeyen hata");
+        if (timeout) {
           // Aday bilgileri (PATCH) zaten kaydedildi ve bunu biliyoruz; CV'nin sunucuda
           // gerçekten işlenip işlenmediği ise belirsiz — yanlış "başarısız" demek yerine
           // gerçek durumu sunucudan tazeliyoruz.
           setError("Sunucudan yanıt gelmedi, CV'nin durumu bilinmiyor — sayfa yenilenecek.");
         } else {
           // Aday bilgileri zaten kaydedildi; sadece CV yüklemesi başarısız oldu — ayrı ve net bir mesaj.
-          setError(`Aday bilgileri kaydedildi, ancak CV yüklenemedi: ${formatApiError(e, "bilinmeyen hata")}`);
+          setError(`Aday bilgileri kaydedildi, ancak CV yüklenemedi: ${message}`);
         }
         setEditingAttemptId(null);
         fetchAll();
