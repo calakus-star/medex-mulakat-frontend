@@ -8,6 +8,18 @@ const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
 const STATUS_TONE = { pending: "yellow", completed: "green" };
 const REC_TONE = { "İşe Al": "green", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
 
+// AI kullanım logu — teknik action adlarını okunabilir kaleme çevirir (FAZ D: mimik + denetçi eklendi).
+const USAGE_ACTION_LABELS = {
+  interview_chat: "Mülakat turları",
+  report_generation_primary: "Rapor üretimi (birincil)",
+  l2_report_generation_deferred: "Rapor üretimi (birincil)",
+  mimic_frame_analysis: "Mimik analizi (kareler)",
+  report_reviewer: "Ortak rapor — muhalif denetçi",
+  realtime_session: "Realtime oturum açılışı",
+  realtime_heartbeat: "Realtime ara kayıt",
+  realtime_final_frontend: "Realtime kapanış kullanımı",
+};
+
 const stripMarkdown = (value = "") => value
   .replace(/\*\*/g, "")
   .replace(/^\s*[-*]\s+/gm, "• ")
@@ -595,16 +607,66 @@ export default function PersonDetail() {
                 <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Öneri</div>
               </div>
             </div>
+            {/* FAZ D: ortak rapor muhalif denetçisi çalışmadıysa görünür uyarı — sadece admin tarafı. */}
+            {selectedReport.reviewer_status && selectedReport.reviewer_status !== "ok" && (
+              <div style={{ marginBottom: 16 }}>
+                <Alert>
+                  {selectedReport.reviewer_status === "skipped"
+                    ? "İkinci model (muhalif denetçi) bu raporda ÇALIŞMADI (atlandı)."
+                    : "İkinci model (muhalif denetçi) bu raporda BAŞARISIZ oldu."}
+                  {selectedReport.reviewer_error ? ` Neden: ${selectedReport.reviewer_error}` : ""}
+                  {" "}Rapor yalnızca birincil modelin çıktısıdır; "Görüş Ayrılıkları" bölümü eksik olabilir.
+                </Alert>
+              </div>
+            )}
             {selectedReport.usage_logs && selectedReport.usage_logs.length > 0 && (
               <div style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 14, marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 10 }}>AI Kullanım Logu</div>
-                <div style={{ fontSize: 12, color: colors.muted }}>
+                <div style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>
                   Toplam: {(selectedReport.usage_total_tokens || 0).toLocaleString("tr-TR")} token
                   {selectedReport.usage_cache_hit_pct != null && (
                     <> · Cache: <span style={{ fontWeight: 700, color: colors.green }}>%{selectedReport.usage_cache_hit_pct}</span> ({(selectedReport.usage_cached_input_tokens || 0).toLocaleString("tr-TR")} token)</>
                   )}
                   {" · "}<span style={{ fontWeight: 700, color: colors.ink }}>~${(selectedReport.usage_total_cost_usd || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
                 </div>
+                {(() => {
+                  // Action bazında kalem kalem döküm (FAZ D: mimik + denetçi ayrı satır olarak görünür).
+                  const byAction = {};
+                  for (const r of selectedReport.usage_logs) {
+                    const k = r.action || "diğer";
+                    if (!byAction[k]) byAction[k] = { calls: 0, tokens: 0, cost: 0, model: r.model };
+                    byAction[k].calls += 1;
+                    byAction[k].tokens += (r.total_tokens || 0);
+                    byAction[k].cost += (r.estimated_cost_usd || 0);
+                  }
+                  const rows = Object.entries(byAction).sort((a, b) => b[1].cost - a[1].cost);
+                  return (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ color: colors.muted, textAlign: "left" }}>
+                            <th style={{ padding: "4px 8px" }}>Kalem</th>
+                            <th style={{ padding: "4px 8px" }}>Model</th>
+                            <th style={{ padding: "4px 8px", textAlign: "right" }}>Çağrı</th>
+                            <th style={{ padding: "4px 8px", textAlign: "right" }}>Token</th>
+                            <th style={{ padding: "4px 8px", textAlign: "right" }}>~$</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map(([action, v]) => (
+                            <tr key={action} style={{ borderTop: `1px solid ${colors.border}`, color: colors.inkSoft }}>
+                              <td style={{ padding: "4px 8px" }}>{USAGE_ACTION_LABELS[action] || action}</td>
+                              <td style={{ padding: "4px 8px" }}>{v.model || "-"}</td>
+                              <td style={{ padding: "4px 8px", textAlign: "right" }}>{v.calls}</td>
+                              <td style={{ padding: "4px 8px", textAlign: "right" }}>{v.tokens.toLocaleString("tr-TR")}</td>
+                              <td style={{ padding: "4px 8px", textAlign: "right" }}>{v.cost.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
             )}
             <ReportText text={selectedReport.report} />

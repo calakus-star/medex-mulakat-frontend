@@ -259,6 +259,50 @@ export default function Interview() {
     });
   }, [captureSnapshot]);
 
+  // ===== FAZ D: MİMİK ANALİZ KARELERİ — doğrulama karelerinden AYRI =====
+  // 45 sn'de bir, üst sınır 24. reason='mimic_sample'; backend ayrı kotada tutar, panel/PDF'te
+  // göstermez. Kendi in-flight/sayaç ref'leri — doğrulama karesi akışına dokunmaz.
+  const mimicFrameCountRef = useRef(0);
+  const mimicInFlightRef = useRef(false);
+  // Aralık sabit değil: mülakatın planlanan toplam süresine göre hesaplanır (aralik = süre/24),
+  // böylece 24 kare mülakatın TAMAMINA eşit dağılır. Alt sınır 30 sn (kısa mülakatta sağanak yok).
+  // Süre startInterview yanıtından (total_duration_seconds) gelince güncellenir.
+  const [mimicIntervalMs, setMimicIntervalMs] = useState(45000);
+  const captureMimicFrame = useCallback(async () => {
+    if (mimicInFlightRef.current || mimicFrameCountRef.current >= 24 || stateRef.current.finished) return;
+    const video = videoRef.current;
+    if (!video || video.readyState < 2 || !video.videoWidth) return;
+    const cand = stateRef.current.candidate;
+    if (!cand || !cand.id) return;
+    mimicInFlightRef.current = true;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 360;
+      canvas.height = Math.round(360 * (video.videoHeight / video.videoWidth)) || 270;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+      const res = await axios.post(`${API_URL}/api/interview/snapshot`, {
+        candidate_id: cand.id, image_base64: dataUrl, reason: "mimic_sample",
+        elapsed_ms: Math.round((totalElapsedRef.current || 0) * 1000), level: cand.level ?? null,
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      if (typeof res.data?.count === "number") mimicFrameCountRef.current = res.data.count;
+      else mimicFrameCountRef.current += 1;
+    } catch (e) {
+      // Mimik karesi kritik değil — sessiz geç.
+    } finally {
+      mimicInFlightRef.current = false;
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (step !== "interview" || starting || finished) return;
+    if (introText && !introConfirmed) return;
+    const id = setInterval(() => { captureMimicFrame(); }, mimicIntervalMs);
+    return () => clearInterval(id);
+  }, [step, starting, finished, introText, introConfirmed, captureMimicFrame, mimicIntervalMs]);
+
   useEffect(() => {
     if (step !== "interview" || starting || finished || totalDurationRef.current <= 0) return;
     const elapsedRatio = (totalDurationRef.current - totalSecondsLeft) / totalDurationRef.current;
@@ -317,6 +361,8 @@ export default function Interview() {
       const totalDur = res.data.total_duration_seconds || 1080;
       setTotalSecondsLeft(totalDur);
       totalDurationRef.current = totalDur;
+      // Mimik kareleri mülakatın tamamına eşit dağılsın: aralik = toplam_sure / 24, alt sınır 30 sn.
+      setMimicIntervalMs(Math.max(30, Math.round(totalDur / 24)) * 1000);
       if (res.data.intro_text) setIntroText(res.data.intro_text);
       ensureSnapshot("start");
     } catch (e) {

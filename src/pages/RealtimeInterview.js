@@ -379,6 +379,29 @@ export default function RealtimeInterview() {
   // D1 kapsamında kabul edilebilir, sadece gözlemlenebilirlik verisi, rapor/maliyet etkilemez.
   const drainRealtimeEvents = () => realtimeEventsBufferRef.current.splice(0, realtimeEventsBufferRef.current.length);
 
+  // FAZ D: modelin note_voice_observation tool call'ı — mevcut event buffer'ına yazılır
+  // (yeni taşıma yolu YOK). call_id ile dedupe (aynı call hem _arguments.done hem
+  // _output_item.done'dan gelir) + istemci tarafı sert üst sınır (5). Backend'e
+  // function_call_output/response GÖNDERİLMEZ — tool yanıta bağlanmaz, ses akışı kesilmez.
+  const voiceObsHandledRef = useRef(new Set());
+  const voiceObsCountRef = useRef(0);
+  const recordVoiceObservation = (callId, argsJson) => {
+    const key = callId || `single_${voiceObsCountRef.current}`;
+    if (voiceObsHandledRef.current.has(key)) return;
+    voiceObsHandledRef.current.add(key);
+    if (voiceObsCountRef.current >= 5) return;
+    let parsed = {};
+    try { parsed = JSON.parse(argsJson || "{}"); } catch (e) { return; }
+    voiceObsCountRef.current += 1;
+    pushRealtimeEvent("note_voice_observation", {
+      ton: parsed.ton ?? null,
+      akicilik: typeof parsed.akicilik === "number" ? parsed.akicilik : null,
+      tereddut: typeof parsed.tereddut === "number" ? parsed.tereddut : null,
+      gozlem: (parsed.gozlem || "").slice(0, 500),
+    });
+    logDebug(`Ses gözlemi kaydedildi (${voiceObsCountRef.current}/5).`);
+  };
+
   // Fiyat backend'in AI_PRICING_PER_1M'inden gelir (pricingRef, session açılışında dolduruluyor) —
   // burada sabit sayı YOK, tek kaynak backend. cached_* alanları input/audio_input'ın ALT KÜMESİDİR.
   const estimateRealtimeCost = (u) => {
@@ -518,6 +541,50 @@ export default function RealtimeInterview() {
       }, delay);
     });
   }, [captureSnapshot]);
+
+  // ===== FAZ D: MİMİK ANALİZ KARELERİ — doğrulama karelerinden AYRI =====
+  // 45 sn'de bir, üst sınır 24. reason='mimic_sample' ile gönderilir; backend bunları ayrı
+  // kotada tutar ve panel/PDF'te GÖSTERMEZ. Kendi in-flight/sayaç ref'leri var; doğrulama
+  // karesi akışına (savedSnapshotCountRef, snapshotInFlightRef) hiç dokunmaz.
+  const mimicFrameCountRef = useRef(0);
+  const mimicInFlightRef = useRef(false);
+  // Aralık sabit değil: session yanıtındaki target_seconds'a göre (aralik = target_seconds/24),
+  // alt sınır 30 sn. Böylece 24 kare mülakatın planlanan tamamına eşit dağılır.
+  const [mimicIntervalMs, setMimicIntervalMs] = useState(45000);
+  const captureMimicFrame = useCallback(async () => {
+    if (mimicInFlightRef.current || mimicFrameCountRef.current >= 24 || finishedRef.current) return;
+    const video = videoRef.current;
+    if (!video || video.readyState < 2 || !video.videoWidth) return;
+    const candidateId = candidate ? candidate.id : null;
+    if (!candidateId) return;
+    mimicInFlightRef.current = true;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 360;
+      canvas.height = Math.round(360 * (video.videoHeight / video.videoWidth)) || 270;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+      const res = await axios.post(`${API_URL}/api/interview/snapshot`, {
+        candidate_id: candidateId, image_base64: dataUrl, reason: "mimic_sample",
+        elapsed_ms: Math.round((elapsedRef.current || 0) * 1000),
+        level: candidate ? candidate.level : null,
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      if (typeof res.data?.count === "number") mimicFrameCountRef.current = res.data.count;
+      else mimicFrameCountRef.current += 1;
+    } catch (e) {
+      // Mimik karesi kritik değil — sessiz geç, mülakat akışını etkileme.
+    } finally {
+      mimicInFlightRef.current = false;
+    }
+  }, [candidate, token]);
+
+  useEffect(() => {
+    if (step !== "live" || finished) return;
+    const id = setInterval(() => { captureMimicFrame(); }, mimicIntervalMs);
+    return () => clearInterval(id);
+  }, [step, finished, captureMimicFrame, mimicIntervalMs]);
 
   // Sabit bir toplam süre olmadığı için (adaptif konuşma) oran yerine mutlak saniye
   // kontrol noktaları kullanılır: erken varlık doğrulaması + orta + geç + son.
@@ -697,6 +764,10 @@ export default function RealtimeInterview() {
       coverageThresholdRef.current = sessionRes.data.coverage_threshold || 60;
       criteriaNamesRef.current = sessionRes.data.criteria_names || [];
       pricingRef.current = sessionRes.data.pricing || {};
+      // FAZ D: mimik kareleri mülakatın planlanan süresine eşit dağılsın (aralik = süre/24, alt sınır 30 sn).
+      if (sessionRes.data.target_seconds) {
+        setMimicIntervalMs(Math.max(30, Math.round(sessionRes.data.target_seconds / 24)) * 1000);
+      }
       logDebug(`Ephemeral key alındı. Model: ${model}. Key uzunluğu: ${ephemeralKey ? ephemeralKey.length : 0}`);
       if (!ephemeralKey) logDebug("⚠️ UYARI: client_secret boş geldi — backend session yanıtını kontrol et.");
 
@@ -946,6 +1017,8 @@ export default function RealtimeInterview() {
             dcRef.current.send(JSON.stringify({ type: "response.cancel" }));
             dcRef.current.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
             logDebug(`Gerçek araya giriş doğrulandı; AI susturuldu. micRms=${micRmsRef.current.toFixed(4)}`);
+            // FAZ D: doğrulanmış söz kesme — ses metrikleri için (mevcut buffer → sync/report).
+            pushRealtimeEvent("barge_in_confirmed", { mic_rms: Number(micRmsRef.current.toFixed(4)) });
           } catch (err) {
             logDebug("⚠️ Doğrulanmış araya giriş durdurma hatası: " + (err.message || err));
           }
@@ -967,6 +1040,8 @@ export default function RealtimeInterview() {
         break;
       case "response.created":
         hasActiveResponseRef.current = true;
+        // FAZ D: AI düşünme süresi metriği (speech_stopped -> response.created).
+        pushRealtimeEvent("response.created", {});
         setPhase("speaking"); phaseRef.current = "speaking";
         ensureAudioPlaybackRef.current("response.created");
         break;
@@ -1002,6 +1077,8 @@ export default function RealtimeInterview() {
         break;
       case "conversation.item.input_audio_transcription.completed":
         // Adayın konuştuğu turun yazıya çevrilmiş hali (rapor/transkript için).
+        // FAZ D: aday turu sinyali — ses metrikleri (tur eşleştirme / yanıt gecikmesi).
+        pushRealtimeEvent("conversation.item.input_audio_transcription.completed", { has_text: !!evt.transcript });
         if (evt.transcript) {
           appendTranscript("aday", evt.transcript);
           answeredCountRef.current += 1;
@@ -1016,6 +1093,8 @@ export default function RealtimeInterview() {
         const spoken = assistantDeltaRef.current.trim();
         appendTranscript("mülakatçı", spoken);
         assistantDeltaRef.current = "";
+        // FAZ D: AI konuşma bitişi — aday yanıt gecikmesi metriği (bu olay -> sonraki speech_started).
+        pushRealtimeEvent("response.audio_transcript.done", {});
         // Ekranda yalnızca adaydan cevap bekleyen son soruyu göster.
         const questionMatches = spoken.match(/[^.!?]*\?/g);
         const lastQuestion = questionMatches?.length ? questionMatches[questionMatches.length - 1].trim() : "";
@@ -1047,6 +1126,8 @@ export default function RealtimeInterview() {
             if (closingFallbackTimerRef.current) { clearTimeout(closingFallbackTimerRef.current); closingFallbackTimerRef.current = null; }
           } catch (err) {}
           handleEndInterviewRequest(reason, coverage);
+        } else if (evt.name === "note_voice_observation") {
+          recordVoiceObservation(evt.call_id || evt.item_id, evt.arguments);
         }
         break;
       case "response.output_item.done":
@@ -1063,6 +1144,8 @@ export default function RealtimeInterview() {
             if (closingFallbackTimerRef.current) { clearTimeout(closingFallbackTimerRef.current); closingFallbackTimerRef.current = null; }
           } catch (err) {}
           handleEndInterviewRequest(reason, coverage);
+        } else if (evt.item && evt.item.type === "function_call" && evt.item.name === "note_voice_observation") {
+          recordVoiceObservation(evt.item.call_id || evt.item.id, evt.item.arguments);
         }
         break;
       default:
