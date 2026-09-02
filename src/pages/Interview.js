@@ -68,6 +68,7 @@ export default function Interview() {
   const [starting, setStarting] = useState(false);
   const [finished, setFinished] = useState(false);
   const [terminated, setTerminated] = useState(false);
+  const [reportProcessing, setReportProcessing] = useState(false); // rapor arkada üretiliyor mu
   const [score, setScore] = useState(null);
   const [violationWarning, setViolationWarning] = useState("");
 
@@ -360,6 +361,9 @@ export default function Interview() {
         ensureSnapshot("finish");
         // Kısa mülakatlarda 4 kare tamamlanamayabilir; bitişte kalanları sessizce tamamlamayı dener.
         [600, 1500, 2600].forEach((delay) => setTimeout(() => ensureSnapshot("finish_fill"), delay));
+        // KAPANIŞ SIRASI: teşekkür mesajı (yukarıda mesaj balonuna eklendi) + bekletmeden
+        // bitiş ekranı; rapor arkada üretilir (res.data.processing).
+        setReportProcessing(res.data.processing === true);
         setFinished(true);
         setScore(res.data.score);
         if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
@@ -397,6 +401,7 @@ export default function Interview() {
 
       if (res.data.terminated) {
         setTerminated(true);
+        setReportProcessing(res.data.processing === true);
         setFinished(true);
         setScore(res.data.score);
         setMessages(prev => [...prev, { role: "assistant", content: res.data.message || "Mülakat ihlal nedeniyle sonlandırıldı." }]);
@@ -1007,8 +1012,12 @@ export default function Interview() {
             </div>
             <div style={{ color: colors.slate, marginBottom: 20, lineHeight: 1.6 }}>
               {terminated
-                ? "Mülakat kuralları ihlal edildiği için süreç sonlandırılmıştır."
-                : "Değerlendirmeniz insan kaynakları ekibimize iletildi. En kısa sürede sizinle iletişime geçeceğiz."}
+                ? (reportProcessing
+                    ? "Mülakat kuralları ihlal edildiği için süreç sonlandırılmıştır. Raporunuz hazırlanıyor; bu ekranı artık kapatabilirsiniz."
+                    : "Mülakat kuralları ihlal edildiği için süreç sonlandırılmıştır.")
+                : (reportProcessing
+                    ? "Teşekkür ederiz, mülakatınız tamamlandı. Raporunuz hazırlanıyor; bu ekranı artık kapatabilirsiniz. Değerlendirmeniz hazır olduğunda insan kaynakları ekibimiz sizinle iletişime geçecektir."
+                    : "Değerlendirmeniz insan kaynakları ekibimize iletildi. En kısa sürede sizinle iletişime geçeceğiz.")}
             </div>
           </div>
         )}

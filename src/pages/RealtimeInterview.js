@@ -1194,7 +1194,13 @@ export default function RealtimeInterview() {
             </div>
             <div style={{ fontSize: 18, fontWeight: 600, color: "#0f172a", marginBottom: 8 }}>Mülakatınız Tamamlandı</div>
             <div style={{ color: "#64748b", lineHeight: 1.6, fontSize: 14 }}>
-              Değerlendirmeniz insan kaynakları ekibimize iletildi. En kısa sürede sizinle iletişime geçeceğiz.
+              {/* KAPANIŞ SIRASI: kapanış konuşmasını mülakatçı sesli yaptı; burada aday bekletilmeden
+                  bitiş ekranını görür ve rapor arkada üretilir. Adaya ham hata/teknik metin gösterilmez. */}
+              {reportResult?.error
+                ? "Teşekkür ederiz, mülakatınız tamamlandı. Raporunuz hazırlanırken bir sorun oluştu; ekibimiz durumu görecek ve gerekirse sizinle iletişime geçecektir. Bu ekranı artık kapatabilirsiniz."
+                : reportResult?.processing
+                  ? "Teşekkür ederiz, mülakatınız tamamlandı. Raporunuz hazırlanıyor; bu ekranı artık kapatabilirsiniz. Değerlendirmeniz hazır olduğunda insan kaynakları ekibimiz sizinle iletişime geçecektir."
+                  : "Değerlendirmeniz insan kaynakları ekibimize iletildi. En kısa sürede sizinle iletişime geçeceğiz."}
             </div>
           </div>
         )}

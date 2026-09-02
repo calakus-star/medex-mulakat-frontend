@@ -49,6 +49,7 @@ export default function PersonDetail() {
   const [credModal, setCredModal] = useState(null);
 
   const [editingAttemptId, setEditingAttemptId] = useState(null);
+  const [attemptMode, setAttemptMode] = useState("edit"); // "edit" | "new" — aynı form iki işi görür
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [editCvFile, setEditCvFile] = useState(null);
   // Değişmemiş alanları PATCH gövdesinden dışlayabilmek için formun açılış anlık
@@ -214,20 +215,93 @@ export default function PersonDetail() {
     }
   };
 
+  const attemptFormFrom = (a) => ({
+    name: a.name || "", email: a.email || "", phone: a.phone || "",
+    positionGroup: findGroupForPosition(a.position || ""), position: a.position || "",
+    level: a.level || 1, depth_tier: a.depth_tier || "standart",
+    interview_language: a.interview_language || "tr", report_language: a.report_language || "tr",
+    education: a.education || "", university: a.university || "", department: a.department || "",
+    experience_years: a.experience_years || 0, ai_note: a.ai_note || "",
+  });
+
   const startEditAttempt = (a) => {
+    setAttemptMode("edit");
     setEditingAttemptId(a.candidate_id);
-    const initial = {
-      name: a.name || "", email: a.email || "", phone: a.phone || "",
-      positionGroup: findGroupForPosition(a.position || ""), position: a.position || "",
-      level: a.level || 1, depth_tier: a.depth_tier || "standart",
-      interview_language: a.interview_language || "tr", report_language: a.report_language || "tr",
-      education: a.education || "", university: a.university || "", department: a.department || "",
-      experience_years: a.experience_years || 0, ai_note: a.ai_note || "",
-    };
+    const initial = attemptFormFrom(a);
     setEditForm(initial);
     editFormInitialRef.current = initial;
     setEditCvFile(null);
     setError("");
+  };
+
+  // Tamamlanmış mülakat düzenlemeye kapalıdır — aynı kişi/aynı kaynak için yeni bir çağrı açar.
+  const startNewAttempt = (a) => {
+    setAttemptMode("new");
+    setEditingAttemptId(a.candidate_id);
+    const initial = attemptFormFrom(a);
+    setEditForm(initial);
+    editFormInitialRef.current = initial;
+    setEditCvFile(null);
+    setError(""); setSuccess("");
+  };
+
+  const closeAttemptForm = () => { setEditingAttemptId(null); setAttemptMode("edit"); };
+
+  const saveNewAttempt = async () => {
+    setLoading(true); setError(""); setSuccess("");
+    if (!editForm.position) {
+      setError("Yeni çağrı için bir pozisyon seçilmelidir.");
+      setLoading(false);
+      return;
+    }
+    // KOPYALAMA KURALI: yalnızca formun açılış (kaynak) değerinden GERÇEKTEN değişen alan
+    // gönderilir. Dokunulmayan alan gövdeye hiç girmez → backend onu kaynak kayıttan kopyalar.
+    // Böylece kaynağın dili/seviyesi sabit bir varsayılana düşmez.
+    const initial = editFormInitialRef.current || {};
+    const body = {};
+    ["position", "level", "depth_tier", "interview_language", "report_language", "ai_note"].forEach((k) => {
+      if (editForm[k] !== initial[k]) body[k] = editForm[k];
+    });
+    let created;
+    try {
+      const res = await apiClient.post(`${API_URL}/api/admin/candidates/${editingAttemptId}/new-attempt`, body, authHeaders);
+      created = res.data;
+    } catch (e) {
+      const { message, timeout } = formatApiError(e, "Yeni çağrı oluşturulamadı.");
+      if (timeout) {
+        setError("Sunucudan yanıt gelmedi, yeni çağrının oluşup oluşmadığı bilinmiyor — sayfa yenilenecek.");
+        closeAttemptForm();
+        fetchAll();
+        setLoading(false);
+        return;
+      }
+      setError(message);
+      setLoading(false);
+      return;
+    }
+
+    let cvWarning = "";
+    if (editCvFile && created?.id) {
+      try {
+        const fd = new FormData();
+        fd.append("file", editCvFile);
+        const cvRes = await apiClient.post(`${API_URL}/api/admin/candidates/${created.id}/upload-cv`, fd, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }, timeout: 30000
+        });
+        if (cvRes.data?.cv_ownership_warning) cvWarning = ` ⚠ ${cvRes.data.cv_ownership_warning}`;
+        else if (cvRes.data?.cv_ownership_note) cvWarning = ` ℹ ${cvRes.data.cv_ownership_note}`;
+      } catch (e) {
+        // Yeni çağrı zaten oluşturuldu; sadece CV yüklenemedi — ayrı ve net not.
+        const { message } = formatApiError(e, "bilinmeyen hata");
+        cvWarning = ` — Yeni çağrı oluştu ancak CV yüklenemedi: ${message}`;
+      }
+    }
+
+    closeAttemptForm();
+    setSuccess(`Yeni mülakat çağrısı oluşturuldu.${cvWarning}`);
+    if (created?.username) setCredModal({ username: created.username, password: created.password });
+    fetchAll();
+    setLoading(false);
   };
 
   const saveEditAttempt = async () => {
@@ -374,9 +448,22 @@ export default function PersonDetail() {
                       <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => resetPassword(a.candidate_id)}>🔄 Şifre Sıfırla</Button>
                     </>
                   )}
-                  <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => editingAttemptId === a.candidate_id ? setEditingAttemptId(null) : startEditAttempt(a)}>
-                    {editingAttemptId === a.candidate_id ? "Düzenlemeyi Kapat" : "✏️ Düzenle"}
-                  </Button>
+                  {a.interview_completed_at ? (
+                    <>
+                      <Button variant="secondary" disabled style={{ padding: "6px 12px", fontSize: 12, opacity: 0.5, cursor: "not-allowed" }}
+                        title="Tamamlanmış mülakat düzenlenemez. Yeni çağrı açın.">
+                        ✏️ Düzenle
+                      </Button>
+                      <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }}
+                        onClick={() => (editingAttemptId === a.candidate_id && attemptMode === "new") ? closeAttemptForm() : startNewAttempt(a)}>
+                        {(editingAttemptId === a.candidate_id && attemptMode === "new") ? "Vazgeç" : "🔄 Yeni çağrı"}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => (editingAttemptId === a.candidate_id && attemptMode === "edit") ? closeAttemptForm() : startEditAttempt(a)}>
+                      {(editingAttemptId === a.candidate_id && attemptMode === "edit") ? "Düzenlemeyi Kapat" : "✏️ Düzenle"}
+                    </Button>
+                  )}
                   <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => toggleReapply(a.candidate_id)}>
                     {a.reapply_allowed ? "İzni Kapat" : "Tekrar İzin"}
                   </Button>
@@ -385,26 +472,35 @@ export default function PersonDetail() {
 
                 {editingAttemptId === a.candidate_id && (
                   <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.border}` }}>
+                    {attemptMode === "new" && (
+                      <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: colors.muted, marginBottom: 12, lineHeight: 1.5 }}>
+                        Bu kişi için <strong>yeni bir mülakat çağrısı</strong> oluşturulacak. Ad, e-posta, telefon ve eğitim bilgileri kaynak denemeden birebir kopyalanır; burada yalnızca pozisyon, seviye, derinlik, dil ve AI notu belirlenir. Eski deneme ve raporu olduğu gibi kalır.
+                      </div>
+                    )}
                     <div className="admin-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <Input label="Ad Soyad" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
-                      <Input label="E-posta" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
-                      <Input label="Telefon" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
+                      <Input label="Ad Soyad" value={editForm.name} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+                      <Input label="E-posta" value={editForm.email} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
+                      <Input label="Telefon" value={editForm.phone} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
                       <Select label="Grup" options={groupOptions} value={editForm.positionGroup} onChange={e => setEditForm({ ...editForm, positionGroup: e.target.value, position: "" })} />
                       <Select label="Pozisyon" options={positionOptionsForGroup(editForm.positionGroup)} value={editForm.position} onChange={e => setEditForm({ ...editForm, position: e.target.value })} disabled={!editForm.positionGroup} />
                       <Select label="Mülakat Seviyesi" options={[{ value: 1, label: "Level 1" }, { value: 2, label: "Level 2" }, { value: 3, label: "Level 3" }]} value={editForm.level} onChange={e => setEditForm({ ...editForm, level: parseInt(e.target.value, 10) })} />
                       <Select label="Derinlik" options={[{ value: "kisa", label: "Kısa" }, { value: "standart", label: "Standart" }, { value: "derin", label: "Derin" }]} value={editForm.depth_tier} onChange={e => setEditForm({ ...editForm, depth_tier: e.target.value })} />
-                      <Input label="Üniversite" value={editForm.university} onChange={e => setEditForm({ ...editForm, university: e.target.value })} />
-                      <Input label="Bölüm" value={editForm.department} onChange={e => setEditForm({ ...editForm, department: e.target.value })} />
+                      <Input label="Üniversite" value={editForm.university} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, university: e.target.value })} />
+                      <Input label="Bölüm" value={editForm.department} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, department: e.target.value })} />
                     </div>
                     <div style={{ marginBottom: 12 }}>
                       <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>AI Notu / Özel Talimat</label>
                       <textarea rows={2} value={editForm.ai_note} onChange={e => setEditForm({ ...editForm, ai_note: e.target.value })} style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, resize: "vertical", boxSizing: "border-box" }} />
                     </div>
                     <div style={{ marginBottom: 12 }}>
-                      <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>CV Güncelle (opsiyonel)</label>
+                      <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>
+                        {attemptMode === "new" ? "CV (opsiyonel — boş bırakılırsa kaynak CV kopyalanır)" : "CV Güncelle (opsiyonel)"}
+                      </label>
                       <input type="file" accept=".pdf,.docx" onChange={e => setEditCvFile(e.target.files?.[0] || null)} style={{ width: "100%", padding: 11, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: FONT, boxSizing: "border-box" }} />
                     </div>
-                    <Button disabled={loading} onClick={saveEditAttempt}>{loading ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}</Button>
+                    <Button disabled={loading} onClick={() => attemptMode === "new" ? saveNewAttempt() : saveEditAttempt()}>
+                      {loading ? "Kaydediliyor..." : (attemptMode === "new" ? "Yeni Çağrıyı Oluştur" : "Değişiklikleri Kaydet")}
+                    </Button>
                   </div>
                 )}
               </div>
