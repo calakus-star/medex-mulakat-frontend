@@ -180,7 +180,7 @@ export default function PersonDetail() {
     try {
       const res = await apiClient.post(`${API_URL}/api/admin/candidates/${candidateId}/resend`, {}, authHeaders);
       if (res.data.mail_sent) setSuccess(`Mail tekrar gönderildi. Kullanıcı: ${res.data.username}`);
-      else setCredModal({ username: res.data.username, password: res.data.password });
+      else setCredModal({ username: res.data.username, password: res.data.password, mailFailed: res.data.mail_attempted === true });
       fetchAll();
     } catch (e) {
       setError(formatApiError(e, "Davet tekrar gönderilemedi").message);
@@ -270,7 +270,7 @@ export default function PersonDetail() {
     // gönderilir. Dokunulmayan alan gövdeye hiç girmez → backend onu kaynak kayıttan kopyalar.
     // Böylece kaynağın dili/seviyesi sabit bir varsayılana düşmez.
     const initial = editFormInitialRef.current || {};
-    const body = {};
+    const body = { send_email: true };
     ["position", "level", "depth_tier", "interview_language", "report_language", "ai_note"].forEach((k) => {
       if (editForm[k] !== initial[k]) body[k] = editForm[k];
     });
@@ -310,8 +310,17 @@ export default function PersonDetail() {
     }
 
     closeAttemptForm();
-    setSuccess(`Yeni mülakat çağrısı oluşturuldu.${cvWarning}`);
-    if (created?.username) setCredModal({ username: created.username, password: created.password });
+    if (created?.mail_sent) {
+      setSuccess(`Yeni mülakat çağrısı oluşturuldu, davet maili gönderildi.${cvWarning}`);
+    } else {
+      setSuccess(`Yeni mülakat çağrısı oluşturuldu.${cvWarning}`);
+      if (created?.username) {
+        setCredModal({
+          username: created.username, password: created.password,
+          mailFailed: created?.mail_attempted === true && created?.mail_sent === false,
+        });
+      }
+    }
     fetchAll();
     setLoading(false);
   };
@@ -695,7 +704,11 @@ export default function PersonDetail() {
           <Modal onClose={() => setCredModal(null)} maxWidth={400}>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 17, fontWeight: 700, color: colors.ink, marginBottom: 8 }}>Giriş Bilgileri</div>
-              <div style={{ fontSize: 13, color: colors.muted, marginBottom: 20 }}>Mail gönderilemedi veya manuel iletmek istiyorsanız bu bilgileri kullanın.</div>
+              <div style={{ fontSize: 13, color: colors.muted, marginBottom: 20 }}>
+                {credModal.mailFailed
+                  ? "Davet maili gönderilemedi. Bu bilgileri adaya manuel iletin."
+                  : "Bu giriş bilgilerini adaya iletebilirsiniz."}
+              </div>
               <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: 20, marginBottom: 20 }}>
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 12, color: colors.muted }}>Kullanıcı Adı</div>
