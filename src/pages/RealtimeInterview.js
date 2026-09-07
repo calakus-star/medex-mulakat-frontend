@@ -363,7 +363,8 @@ export default function RealtimeInterview() {
 
   const appendTranscript = (role, text) => {
     if (!text || !text.trim()) return;
-    transcriptRef.current.push({ role, text: text.trim() });
+    // BÖLÜM 2.1: her satıra mülakat başından beri geçen süre (elapsed_ms) — transkriptte [mm:ss].
+    transcriptRef.current.push({ role, text: text.trim(), ms: Math.round((elapsedRef.current || 0) * 1000) });
   };
 
   // Faz D1: ham Realtime olaylarını (şu ana kadar sadece konsola yazılıp kayboluyordu) backend'e
@@ -471,7 +472,11 @@ export default function RealtimeInterview() {
   const markUsageSynced = () => { syncedUsageRef.current = { ...realtimeUsageRef.current }; };
 
   const currentTranscriptText = () =>
-    transcriptRef.current.map(t => `${t.role === "aday" ? "Aday" : "Mülakatçı"}: ${t.text}`).join("\n");
+    transcriptRef.current.map(t => {
+      const s = Math.max(0, Math.round((t.ms || 0) / 1000));
+      const stamp = `[${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}] `;
+      return `${stamp}${t.role === "aday" ? "Aday" : "Mülakatçı"}: ${t.text}`;
+    }).join("\n");
 
   // Görüşme SÜRERKEN periyodik ara kayıt: submitReport hiç tetiklenmezse bile (sekme kapandı,
   // bağlantı koptu, AI end_interview'i hiç çağırmadı) transkript ve token kullanımı tamamen
@@ -663,6 +668,62 @@ export default function RealtimeInterview() {
   }, [candidate, token]);
   submitReportRef.current = submitReport;
 
+  // ===== BÖLÜM 3: sesli mülakatta sistem ihlal tespiti (Interview.js deseninin uyarlaması) =====
+  // Şu ana kadar sesli mülakatta HİÇBİR sistem tespiti yoktu; bu ciddi açığı kapatır.
+  // WebRTC/ses transportuna dokunmaz — yalnızca sekme/kamera olaylarını backend'e bildirir.
+  const violationLastTsRef = useRef(0);
+  const violationGraceUntilRef = useRef(0);
+  const hiddenSinceRef = useRef(null);
+  const reportRealtimeViolation = useCallback(async (violationType, detail) => {
+    if (finishedRef.current || !candidate?.id) return;
+    try {
+      const res = await axios.post(`${API_URL}/api/interview/violation`, {
+        candidate_id: candidate.id, violation_type: violationType, detail,
+        elapsed_seconds: Math.round(elapsedRef.current || 0),
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data?.terminated && !finishedRef.current) {
+        logDebug(`İhlal nedeniyle sonlandırma (${violationType}); rapor üretiliyor.`);
+        setCurrentQuestion("Mülakat kuralları ihlal edildiği için süreç sonlandırıldı.");
+        submitReportRef.current("uygunsuz_davranis");
+      } else if (res.data?.violation_count) {
+        logDebug(`İhlal kaydedildi: ${violationType} (${res.data.violation_count}/3).`);
+      }
+    } catch (e) {
+      logDebug("⚠️ İhlal bildirimi başarısız: " + (e.message || "bilinmeyen"));
+    }
+  }, [candidate, token]);
+
+  useEffect(() => {
+    if (step !== "live" || finished) return;
+    violationGraceUntilRef.current = Date.now() + 10000; // başlangıç hoşgörüsü
+    const reportOnce = () => {
+      const now = Date.now();
+      if (now < violationGraceUntilRef.current) return;
+      if (now - violationLastTsRef.current < 1500) return; // blur+visibility tekrarı
+      violationLastTsRef.current = now;
+      reportRealtimeViolation("tab_switch", "Aday sesli mülakat sırasında sekme/uygulama değiştirdi");
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        hiddenSinceRef.current = Date.now();
+        reportOnce();
+      } else if (hiddenSinceRef.current) {
+        const awayMs = Date.now() - hiddenSinceRef.current;
+        hiddenSinceRef.current = null;
+        if (awayMs > 120000) {
+          reportRealtimeViolation("prolonged_absence", `Aday ~${Math.round(awayMs / 1000)} sn boyunca mülakat ekranından ayrıldı`);
+        }
+      }
+    };
+    const onBlur = () => reportOnce();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [step, finished, reportRealtimeViolation]);
+
   // ===== OpenAI Realtime WebRTC bağlantısını kur =====
   const connectRealtime = async () => {
     initialResponseSentRef.current = false;
@@ -842,19 +903,17 @@ export default function RealtimeInterview() {
         if (initialResponseSentRef.current || dc.readyState !== "open") return;
         initialResponseSentRef.current = true;
         if (openingFallbackTimerRef.current) { clearTimeout(openingFallbackTimerRef.current); openingFallbackTimerRef.current = null; }
-        const firstName = (candidate?.name || "").trim().split(/\s+/)[0];
+        // BÖLÜM 1.4: SABİT AÇILIŞ CÜMLESİ YOK. Modeli, talimatındaki "ADAYI OKU, UYUM SAĞLA"
+        // ilkesine göre kendi açılışını üretmeye tetikliyoruz.
         const position = candidate?.position || "başvurduğunuz pozisyon";
-        const opening = firstName
-          ? `Merhaba ${firstName} Bey, hoş geldiniz. Bugün ${position} pozisyonu için görüşeceğiz. Hazırsanız sizi kısaca tanıyarak başlayalım; şu anki görevinizden ve deneyiminizden söz eder misiniz?`
-          : `Merhaba, hoş geldiniz. Bugün ${position} pozisyonu için görüşeceğiz. Önce sizi kısaca tanıyabilir miyim; şu an ne yapıyorsunuz?`;
         dc.send(JSON.stringify({
           type: "response.create",
           response: {
             input: [],
-            instructions: `Aşağıdaki cümleyi doğal, sıcak ve profesyonel bir insan mülakatçı tonuyla AYNEN söyle. Öncesine veya sonrasına hiçbir şey ekleme: ${opening}`
+            instructions: `Görüşmeyi şimdi başlat. ${position} pozisyonu için bir mülakat. Adayın tonunu henüz duymadın — kısa, sıcak ve doğal bir karşılamayla aç ve adaya kendini/deneyimini kısaca tanıtmasını iste. SABİT KALIP CÜMLE KULLANMA, ezbere "Hoş geldiniz ... Bey/Hanım" gibi bir şablon okuma; doğal konuş.`
           }
         }));
-        logDebug(`İlk açılış gönderildi (${source}).`);
+        logDebug(`İlk açılış tetiklendi (${source}) — model kendi karşılamasını üretir.`);
       };
 
       sendInitialOpeningRef.current = sendInitialOpening;

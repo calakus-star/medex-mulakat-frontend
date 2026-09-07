@@ -212,6 +212,8 @@ export default function Interview() {
     if (!track) return;
     const handleEnded = () => {
       setCameraError("Kamera bağlantısı kesildi. Mülakat devam ediyor ancak kamera görüntüsü artık alınamıyor.");
+      // BÖLÜM 3: kamera kapanması bir ihlal kaydıdır (tek başına sonlandırmaz).
+      if (reportViolationRef.current) reportViolationRef.current("camera_off", "Kamera video track'i 'ended' durumuna geçti");
     };
     track.addEventListener("ended", handleEnded);
     return () => track.removeEventListener("ended", handleEnded);
@@ -434,15 +436,16 @@ export default function Interview() {
     if (sendMessageRef.current) sendMessageRef.current(autoSend, overrideContent);
   };
 
-  // ===== İhlal bildirimi =====
+  // ===== İhlal bildirimi (BÖLÜM 3: tip + somut detay + mülakat saniyesi) =====
   const reportViolationRef = useRef();
-  reportViolationRef.current = async () => {
+  reportViolationRef.current = async (violationType = "tab_switch", detail = null) => {
     if (stateRef.current.finished) return;
     const candidateId = stateRef.current.candidate ? stateRef.current.candidate.id : null;
     if (!candidateId) return;
     try {
       const res = await axios.post(`${API_URL}/api/interview/violation`, {
-        candidate_id: candidateId, violation_type: "tab_switch"
+        candidate_id: candidateId, violation_type: violationType, detail,
+        elapsed_seconds: Math.round(totalElapsedRef.current || 0),
       }, { headers: { Authorization: `Bearer ${token}` } });
 
       if (res.data.terminated) {
@@ -452,12 +455,31 @@ export default function Interview() {
         setScore(res.data.score);
         setMessages(prev => [...prev, { role: "assistant", content: res.data.message || "Mülakat ihlal nedeniyle sonlandırıldı." }]);
         if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      } else {
+      } else if (violationType !== "camera_off") {
         setViolationWarning(`Uyarı (${res.data.violation_count}/3): Mülakat sırasında başka sekme veya uygulamaya geçmemelisiniz. 3. ihlalde mülakat otomatik sonlanır.`);
         setTimeout(() => setViolationWarning(""), 6000);
       }
     } catch (e) { /* sessiz geç, ihlal bildirimi kritik değil */ }
   };
+
+  // BÖLÜM 3: 2 dk+ sekme dışı kalma → prolonged_absence (tek başına sonlandırır)
+  const hiddenSinceRef = useRef(null);
+  useEffect(() => {
+    if (step !== "interview") return;
+    const onVis = () => {
+      if (document.hidden) {
+        hiddenSinceRef.current = Date.now();
+      } else if (hiddenSinceRef.current) {
+        const awayMs = Date.now() - hiddenSinceRef.current;
+        hiddenSinceRef.current = null;
+        if (awayMs > 120000) {
+          reportViolationRef.current("prolonged_absence", `Aday ~${Math.round(awayMs / 1000)} sn boyunca mülakat ekranından ayrıldı`);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [step]);
 
   useEffect(() => {
     if (step !== "interview") return;

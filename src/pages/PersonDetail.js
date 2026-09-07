@@ -62,6 +62,7 @@ export default function PersonDetail() {
 
   const [editingAttemptId, setEditingAttemptId] = useState(null);
   const [attemptMode, setAttemptMode] = useState("edit"); // "edit" | "new" — aynı form iki işi görür
+  const [transcriptOpen, setTranscriptOpen] = useState(false); // BÖLÜM 2.2 — katlanabilir konuşma metni
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [editCvFile, setEditCvFile] = useState(null);
   // Değişmemiş alanları PATCH gövdesinden dışlayabilmek için formun açılış anlık
@@ -129,6 +130,7 @@ export default function PersonDetail() {
 
   const viewReport = async (candidateId) => {
     setModalError("");
+    setTranscriptOpen(false);
     try {
       const res = await apiClient.get(`${API_URL}/api/admin/interviews/${candidateId}`, authHeaders);
       setSelectedReport(res.data);
@@ -173,6 +175,24 @@ export default function PersonDetail() {
         console.error("PDF hata gövdesi ayrıştırılamadı:", parseErr);
       }
       setModalError(detail);
+    }
+  };
+
+  // BÖLÜM 2.3 — düz metin transkript indirme (hiçbir baraj yok)
+  const downloadTranscript = async (candidateId, candidateName = "aday", level) => {
+    try {
+      const q = level ? `?level=${level}` : "";
+      const res = await apiClient.get(`${API_URL}/api/admin/interviews/${candidateId}/transcript${q}`, { ...authHeaders, responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "text/plain" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `MedeX_Transkript_${candidateName.replace(/[^a-zA-Z0-9_-]/g, "_")}.txt`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setModalError("Transkript indirilemedi.");
     }
   };
 
@@ -590,6 +610,7 @@ export default function PersonDetail() {
                 })()}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadTranscript(selectedReport.candidate_id, selectedReport.name, selectedReport.level)}>Transkripti İndir</Button>
                 <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadPdf(selectedReport.candidate_id, selectedReport.name)}>PDF İndir</Button>
                 <button onClick={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted, fontSize: 20 }}>✕</button>
               </div>
@@ -678,6 +699,72 @@ export default function PersonDetail() {
                 })()}
               </div>
             )}
+
+            {/* BÖLÜM 3 — Sonuç Gerekçesi / İhlal Kaydı (yalnızca admin) */}
+            {(() => {
+              const events = Array.isArray(selectedReport.result_events) ? selectedReport.result_events : [];
+              const rreason = (selectedReport.result_reason || "").trim();
+              const partial = selectedReport.partial ? true : false;
+              if (!events.length && !rreason && !partial) return null;
+              return (
+                <div style={{ background: colors.surfaceAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 14, marginBottom: 20 }}>
+                  <div style={{ fontWeight: 700, color: colors.ink, marginBottom: 8 }}>Sonuç Gerekçesi / İhlal Kaydı</div>
+                  {selectedReport.result_reason_missing && (
+                    <Alert>Sistem bu olumsuz sonuç için otomatik gerekçe üretemedi — konuşma metnini inceleyin.</Alert>
+                  )}
+                  {partial && (
+                    <Badge tone="yellow">Kısmi mülakat{selectedReport.completion_pct != null ? ` — %${selectedReport.completion_pct} tamamlandı` : ""}</Badge>
+                  )}
+                  {rreason && !selectedReport.result_reason_missing && (
+                    <div style={{ fontSize: 13, color: colors.inkSoft, marginTop: 8, lineHeight: 1.6 }}>{rreason}</div>
+                  )}
+                  {events.map((ev, i) => (
+                    <div key={i} style={{ fontSize: 12.5, color: colors.inkSoft, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${colors.border}` }}>
+                      <span style={{ fontWeight: 700 }}>
+                        [{ev.elapsed_minute != null ? `${ev.elapsed_minute}. dk` : (ev.occurred_at || "-")}]
+                      </span>{" "}
+                      {ev.description || ev.subtype || ev.type}
+                      <span style={{ color: colors.mutedLight }}> · {ev.weight || "-"}{ev.snapshot_id ? ` · kamera karesi #${ev.snapshot_id}` : ""}</span>
+                      {ev.elapsed_ms != null && (
+                        <button
+                          onClick={() => setTranscriptOpen(true)}
+                          style={{ marginLeft: 8, background: "none", border: "none", color: colors.blue, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+                          transkriptte gör
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {selectedReport.technical_error_ref && (
+                    <div style={{ fontSize: 11, color: colors.mutedLight, marginTop: 8 }}>Teknik referans (yalnızca yönetici): {selectedReport.technical_error_ref}</div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* BÖLÜM 2.2 — Konuşma Metni (katlanabilir) */}
+            {Array.isArray(selectedReport.transcript) && selectedReport.transcript.length > 0 && (
+              <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, marginBottom: 20, overflow: "hidden" }}>
+                <button
+                  onClick={() => setTranscriptOpen(o => !o)}
+                  style={{ width: "100%", textAlign: "left", background: colors.surfaceAlt, border: "none", padding: "12px 14px", cursor: "pointer", fontWeight: 700, color: colors.ink, fontSize: 14 }}>
+                  {transcriptOpen ? "▾" : "▸"} Konuşma Metni ({selectedReport.transcript.length} satır)
+                </button>
+                {transcriptOpen && (
+                  <div style={{ maxHeight: 360, overflowY: "auto", padding: 14, fontSize: 12.5, lineHeight: 1.6, background: colors.surface }}>
+                    {selectedReport.transcript.map((row, i) => (
+                      <div key={i} style={{ marginBottom: 8 }}>
+                        <span style={{ color: colors.mutedLight, fontSize: 11 }}>{row.ts ? `[${row.ts}] ` : ""}</span>
+                        <span style={{ fontWeight: 700, color: row.role === "aday" ? colors.ink : colors.blue }}>
+                          {row.role === "aday" ? "Aday" : "Mülakatçı"}:
+                        </span>{" "}
+                        <span style={{ color: colors.inkSoft, whiteSpace: "pre-wrap" }}>{row.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <ReportText text={selectedReport.report} />
             {selectedReport.ai_note && (
               <>
