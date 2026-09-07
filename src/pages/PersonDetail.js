@@ -870,7 +870,8 @@ export default function PersonDetail() {
               const conn = r.connection_events || [];
               const allEv = r.realtime_events || [];
               const frames = r.camera_frames || [];
-              const hasAny = sd || cov || ca || filtered.length || tools.length || conn.length || allEv.length || frames.length;
+              const mcov = r.modality_coverage;
+              const hasAny = sd || cov || ca || filtered.length || tools.length || conn.length || allEv.length || frames.length || mcov;
               if (!hasAny) return null;
               const mmss = (ms) => { const s = Math.max(0, Math.round((ms || 0) / 1000)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
               const Blk = ({ title, children }) => (
@@ -892,10 +893,33 @@ export default function PersonDetail() {
                   </button>
                   {sessionOpen && (
                     <div style={{ padding: 14, background: colors.surface, maxHeight: 460, overflowY: "auto" }}>
+                      {r.report_regenerated_at && (
+                        <div style={{ fontSize: 12, color: colors.blue, marginBottom: 10, fontWeight: 600 }}>
+                          ⟳ Rapor yeniden üretildi: {formatDateTR(r.report_regenerated_at)} (orijinal bitiş saati korundu)
+                        </div>
+                      )}
                       {sd && (
                         <Blk title={`Sistem kararı: ${sd.decision || "-"}`}>
                           <div style={{ fontSize: 12.5, color: colors.inkSoft, marginBottom: 4 }}>{sd.reason}</div>
+                          {Array.isArray(sd.warnings) && sd.warnings.length > 0 && (
+                            <ul style={{ margin: "4px 0 6px 16px", padding: 0, fontSize: 12, color: "#b45309" }}>
+                              {sd.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                            </ul>
+                          )}
                           {sd.meta && <Pre obj={sd.meta} />}
+                        </Blk>
+                      )}
+                      {mcov && (
+                        <Blk title="Modalite veri kapsamı">
+                          <div style={{ fontSize: 12.5, color: colors.inkSoft }}>
+                            Kamera kareleri: <strong>{mcov.kare_sayisi}</strong>
+                            {mcov.ilk_dk != null ? ` (mülakatın ${mcov.ilk_dk}.–${mcov.son_dk}. dakikaları arası)` : ""}
+                            {mcov.kumelenme_uyarisi ? <span style={{ color: "#b91c1c", fontWeight: 700 }}> — ⚠ dar aralıkta kümelenmiş, oturumun çoğu gözlemsiz</span> : ""}
+                            <br />
+                            Ses metrikleri: {mcov.ses_metrikleri_var
+                              ? <span style={{ color: colors.green, fontWeight: 600 }}>toplandı</span>
+                              : <span style={{ color: "#b91c1c", fontWeight: 600 }}>TOPLANAMADI</span>}
+                          </div>
                         </Blk>
                       )}
                       {cov && <Blk title="Kriter kapsanma (model bildirimi, 0-100)"><Pre obj={cov} /></Blk>}
