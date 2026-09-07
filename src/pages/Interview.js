@@ -9,6 +9,26 @@ const formatTime = (s) => {
   return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, "0")}`;
 };
 
+// Bağlantı hatasında otomatik yeniden deneme adımları (BÖLÜM 1.5).
+const START_BACKOFF_MS = [1000, 3000, 7000];
+
+// Adaya DÜŞECEK mesajı üretir — ham HTTP kodu / teknik metin / İngilizce hata ASLA girmez.
+function mapStartError(e) {
+  const detail = e?.response?.data?.detail;
+  if (detail && typeof detail === "object" && typeof detail.message === "string") {
+    return { message: detail.message, retryable: !!detail.retryable };
+  }
+  if (typeof detail === "string" && detail && !/[0-9]{3}/.test(detail)) {
+    return { message: detail, retryable: false };
+  }
+  if (e?.code === "ECONNABORTED" || e?.message === "Network Error") {
+    return { message: "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edin.", retryable: true };
+  }
+  return { message: "Mülakat şu anda başlatılamıyor. Lütfen birkaç dakika sonra tekrar deneyin.", retryable: true };
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 
 const CameraPreview = memo(function CameraPreview({ attachVideoRef }) {
   return (
@@ -66,6 +86,7 @@ export default function Interview() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [startFailed, setStartFailed] = useState(false);
   const [finished, setFinished] = useState(false);
   const [terminated, setTerminated] = useState(false);
   const [reportProcessing, setReportProcessing] = useState(false); // rapor arkada üretiliyor mu
@@ -354,27 +375,41 @@ export default function Interview() {
 
   const startInterview = async () => {
     setStarting(true);
-    try {
-      const res = await axios.post(`${API_URL}/api/interview/start`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMessages([{ role: "assistant", content: res.data.message }]);
-      setQuestionSecondsLeft(res.data.question_duration || 60);
-      const totalDur = res.data.total_duration_seconds || 1080;
-      setTotalSecondsLeft(totalDur);
-      totalDurationRef.current = totalDur;
-      // Mimik kareleri mülakatın tamamına eşit dağılsın: aralik = toplam_sure / 24, alt sınır 30 sn.
-      setMimicIntervalMs(Math.max(30, Math.round(totalDur / 24)) * 1000);
-      if (res.data.intro_text) setIntroText(res.data.intro_text);
-      ensureSnapshot("start");
-    } catch (e) {
-      if (e.response?.status === 401) {
-        navigate("/mulakat");
+    setStartFailed(false);
+    // BÖLÜM 1.5: geçici hatalarda (yoğunluk / 5xx / ağ) 3 kez, artan beklemeyle otomatik yeniden dene.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        if (attempt > 0) {
+          setMessages([{ role: "assistant", content: `Bağlanıyor (${attempt}/${START_BACKOFF_MS.length})...` }]);
+          await sleep(START_BACKOFF_MS[attempt - 1]);
+        }
+        const res = await axios.post(`${API_URL}/api/interview/start`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setMessages([{ role: "assistant", content: res.data.message }]);
+        setQuestionSecondsLeft(res.data.question_duration || 60);
+        const totalDur = res.data.total_duration_seconds || 1080;
+        setTotalSecondsLeft(totalDur);
+        totalDurationRef.current = totalDur;
+        // Mimik kareleri mülakatın tamamına eşit dağılsın: aralik = toplam_sure / 24, alt sınır 30 sn.
+        setMimicIntervalMs(Math.max(30, Math.round(totalDur / 24)) * 1000);
+        if (res.data.intro_text) setIntroText(res.data.intro_text);
+        ensureSnapshot("start");
+        setStarting(false);
+        return;
+      } catch (e) {
+        // Aday yüzeyinde 401 otomatik yönlendirme/token temizleme yapmaz (CLAUDE.md hata standardı) —
+        // login uç noktası değil, mülakat ortasında adayı login'e atmak kabul edilemez.
+        const mapped = mapStartError(e);
+        if (mapped.retryable && attempt < START_BACKOFF_MS.length) {
+          continue;
+        }
+        // Adaya SADECE anlaşılır, Türkçe, teknik-detaysız mesaj.
+        setMessages([{ role: "assistant", content: mapped.message }]);
+        setStartFailed(true);
+        setStarting(false);
         return;
       }
-      setMessages([{ role: "assistant", content: "Mülakat başlatılırken bir bağlantı hatası oluştu. Lütfen sayfayı yenileyip tekrar deneyin." }]);
-    } finally {
-      setStarting(false);
     }
   };
 
@@ -985,6 +1020,14 @@ export default function Interview() {
             <div className="interview-chat-scroll" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16, minHeight: 380, maxHeight: 460, overflowY: "auto" }}>
               {starting && messages.length === 0 && (
                 <div style={{ textAlign: "center", color: colors.slate, padding: 40 }}>Mülakat başlatılıyor...</div>
+              )}
+              {startFailed && !starting && (
+                <div style={{ textAlign: "center", padding: "12px 0" }}>
+                  <button onClick={startInterview}
+                    style={{ background: colors.navy, color: "#fff", border: "none", borderRadius: 8, padding: "10px 22px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                    Tekrar Dene
+                  </button>
+                </div>
               )}
               {messages.map((msg, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>

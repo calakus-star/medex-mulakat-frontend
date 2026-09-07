@@ -8,6 +8,36 @@ const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
 const STATUS_TONE = { pending: "yellow", completed: "green" };
 const REC_TONE = { "İşe Al": "green", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
 
+// Teşebbüs durumu (backend derive_attempt_status ile TEK KAYNAK) — sadece renk eşlemesi burada.
+const ATTEMPT_TONE = {
+  sent: "neutral",
+  opened_not_started: "blue",
+  in_progress: "blue",
+  partial: "yellow",
+  completed: "green",
+  terminated: "red",
+  tech_error: "red",
+  expired: "neutral",
+  processing: "yellow",
+};
+
+function formatDateTR(value) {
+  if (!value) return "-";
+  const d = new Date(String(value).replace(" ", "T"));
+  if (isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("tr-TR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function TimelineStep({ label, at, done }) {
+  return (
+    <span title={at ? formatDateTR(at) : "henüz olmadı"}
+      style={{ color: done ? colors.ink : colors.mutedLight, fontWeight: done ? 600 : 400, whiteSpace: "nowrap" }}>
+      {done ? "●" : "○"} {label}
+      {at ? <span style={{ color: colors.muted, fontWeight: 400 }}> ({formatDateTR(at)})</span> : null}
+    </span>
+  );
+}
+
 // AI kullanım logu — teknik action adlarını okunabilir kaleme çevirir (FAZ D: mimik + denetçi eklendi).
 const USAGE_ACTION_LABELS = {
   interview_chat: "Mülakat turları",
@@ -460,14 +490,59 @@ export default function PersonDetail() {
                       {a.position} · Level {a.level}
                       {a.is_archived ? <span style={{ marginLeft: 8, fontSize: 11, color: colors.mutedLight }}>(eski başvuru)</span> : null}
                     </div>
-                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>{a.created_at}</div>
+                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>Davet oluşturuldu: {formatDateTR(a.created_at)}</div>
                     <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <Badge tone={STATUS_TONE[a.status] || "yellow"}>{STATUS_LABELS[a.status] || a.status}</Badge>
+                      <Badge tone={ATTEMPT_TONE[a.attempt_status] || "yellow"}>{a.attempt_status_label || STATUS_LABELS[a.status] || a.status}</Badge>
                       {a.processing_status === "processing" && <Badge tone="yellow">⏳ Rapor Hazırlanıyor</Badge>}
                       {a.processing_status === "failed" && <Badge tone="red" title={a.processing_error || ""}>⚠ Rapor Hatası</Badge>}
                       {a.score !== null && a.score !== undefined && <span style={{ fontWeight: 700, color: colors.ink, fontSize: 13 }}>{a.score}/100</span>}
                       {a.recommendation && <Badge tone={REC_TONE[a.recommendation] || "neutral"}>{a.recommendation}</Badge>}
                       {a.reapply_allowed ? <Badge tone="green">Tekrar başvuru açık</Badge> : null}
+                    </div>
+
+                    {/* Teşebbüs bilgisi: link kaç kez açıldı / kaç kez başlatıldı / son teşebbüs */}
+                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 8, lineHeight: 1.6 }}>
+                      <div>
+                        Link açılışı: <strong style={{ color: colors.ink }}>{a.login_count || 0}</strong> kez
+                        {" · "}Mülakat başlatma: <strong style={{ color: colors.ink }}>{a.interview_start_count || 0}</strong> kez
+                      </div>
+                      {(a.last_start_at || a.last_login_at) && (
+                        <div>Son teşebbüs: {formatDateTR(a.last_start_at || a.last_login_at)}</div>
+                      )}
+                      {a.attempt_status === "expired" && a.invite_expires_at && (
+                        <div>Davet süresi doldu: {formatDateTR(a.invite_expires_at)}</div>
+                      )}
+                    </div>
+
+                    {/* Zaman çizelgesi */}
+                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <TimelineStep label="Davet gönderildi" at={a.created_at} done />
+                      <span>→</span>
+                      <TimelineStep label="İlk açılış" at={a.first_login_at} done={!!a.first_login_at} />
+                      <span>→</span>
+                      <TimelineStep label="Başlatıldı" at={a.last_start_at} done={(a.interview_start_count || 0) > 0} />
+                      <span>→</span>
+                      <TimelineStep
+                        label={a.attempt_status === "terminated" ? "İhlalle sonlandı" : a.attempt_status === "partial" ? "Yarıda kaldı" : a.attempt_status === "tech_error" ? "Teknik hata" : "Bitti"}
+                        at={a.interview_completed_at}
+                        done={["completed", "terminated", "partial", "tech_error"].includes(a.attempt_status)}
+                      />
+                    </div>
+
+                    {/* Duruma göre bağlantılar */}
+                    <div style={{ fontSize: 12, marginTop: 6, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {a.attempt_status === "partial" && a.completion_pct != null && (
+                        <span style={{ color: colors.muted }}>Tamamlanma: %{a.completion_pct}</span>
+                      )}
+                      {a.attempt_status === "tech_error" && (
+                        <a href={`/admin/panel?tab=errors&candidate=${a.candidate_id}`} style={{ color: colors.blue }}>İlgili hata kaydı</a>
+                      )}
+                      {a.attempt_status === "terminated" && a.interview_completed_at && (
+                        <button onClick={() => viewReport(a.candidate_id)}
+                          style={{ background: "none", border: "none", padding: 0, color: colors.blue, cursor: "pointer", fontSize: 12 }}>
+                          İhlal kaydını raporda gör
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

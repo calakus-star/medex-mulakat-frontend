@@ -14,6 +14,59 @@ const formatTime = (s) => {
 // yalnızca Level 3'te devreye girer, L1/L2 hiç etkilenmez.
 const REALTIME_L3_SAFE_LIMIT_SECONDS = 55 * 60;
 
+// Bağlantı hatasında otomatik yeniden deneme adımları (BÖLÜM 1.5). Yalnızca "retryable"
+// sınıflarda (yoğunluk / geçici sunucu / ağ) uygulanır; kota / yetki / mikrofon hatasında ASLA.
+const CONNECT_BACKOFF_MS = [1000, 3000, 7000];
+
+// Debug paneli VARSAYILAN KAPALI — aday hiçbir koşulda ham hata görmez.
+// Sadece ?debug=1 veya localStorage.medex_debug === "1" ile açılır (geliştirici için).
+const DEBUG_ENABLED = (() => {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("debug") === "1" || localStorage.getItem("medex_debug") === "1";
+  } catch (e) {
+    return false;
+  }
+})();
+
+// Aday ekranına DÜŞECEK mesajı üretir — ham HTTP kodu / teknik metin / İngilizce hata ASLA girmez.
+// Dönüş: { message, errorClass, retryable }.
+function mapConnectError(e) {
+  // 1) Backend AI hata katmanı (session çağrısı): detail bir OBJE → {message, error_class, retryable}
+  const detail = e?.response?.data?.detail;
+  if (detail && typeof detail === "object" && typeof detail.message === "string") {
+    return { message: detail.message, errorClass: detail.error_class || "unknown", retryable: !!detail.retryable };
+  }
+  // 2) Mikrofon / cihaz izni
+  if (["NotAllowedError", "NotFoundError", "SecurityError", "PermissionDeniedError"].includes(e?.name)) {
+    return { message: "Mikrofon erişimi verilmedi. Tarayıcı ayarlarından izin verin.", errorClass: "mic_permission", retryable: false };
+  }
+  // 3) SDP / WebRTC pazarlığı — HTTP kodu + (varsa) OpenAI error.code birlikte değerlendirilir
+  if (typeof e?.sdpStatus === "number") {
+    const s = e.sdpStatus;
+    const body = (e.sdpBody || "").toLowerCase();
+    if (body.includes("insufficient_quota") || body.includes("exceeded your current quota") || body.includes("billing")) {
+      return { message: "Mülakat şu anda başlatılamıyor. Lütfen yetkiliyle iletişime geçin.", errorClass: "insufficient_quota", retryable: false };
+    }
+    if (s === 401 || s === 403) {
+      return { message: "Mülakat şu anda başlatılamıyor. Lütfen yetkiliyle iletişime geçin.", errorClass: "invalid_api_key", retryable: false };
+    }
+    if (s === 429) {
+      return { message: "Sistem şu anda yoğun. Lütfen birkaç dakika sonra tekrar deneyin.", errorClass: "rate_limit_exceeded", retryable: true };
+    }
+    if (s >= 500) {
+      return { message: "Servise şu an ulaşılamıyor. Lütfen tekrar deneyin.", errorClass: "server_error", retryable: true };
+    }
+    return { message: "Bağlantı kurulamadı. Lütfen tekrar deneyin.", errorClass: "unknown", retryable: true };
+  }
+  // 4) Ağ / zaman aşımı
+  if (e?.code === "ECONNABORTED" || e?.message === "Network Error" || e?.name === "TypeError" || String(e?.message || "").toLowerCase().includes("failed to fetch")) {
+    return { message: "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edin.", errorClass: "network", retryable: true };
+  }
+  // 5) Bilinmeyen
+  return { message: "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.", errorClass: "unknown", retryable: true };
+}
+
 // ==== Konuşma durumu görsel göstergesi: sese tepki veren tek merkezi halka (metin etiketi yok) ====
 function VoiceOrb({ phase, level }) {
   const config = {
@@ -61,6 +114,9 @@ export default function RealtimeInterview() {
   const [cvError, setCvError] = useState("");
   const [connectError, setConnectError] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [connectAttempt, setConnectAttempt] = useState(0); // 0 = ilk deneme; 1..3 = otomatik yeniden deneme sırası
+  const connectAttemptRef = useRef(0);
+  const retryTimerRef = useRef(null);
   const [phase, setPhase] = useState("idle"); // idle | listening | speaking | thinking
   const phaseRef = useRef("idle"); // rAF döngüsünde güncel phase'e state closure'ı olmadan erişmek için
   const [level, setLevel] = useState(0); // 0-1 arası anlık ses genliği — halkanın büyüklüğü için
@@ -168,6 +224,7 @@ export default function RealtimeInterview() {
     }
     return () => {
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
       cleanupRealtime();
     };
   }, []);
@@ -725,13 +782,21 @@ export default function RealtimeInterview() {
   }, [step, finished, reportRealtimeViolation]);
 
   // ===== OpenAI Realtime WebRTC bağlantısını kur =====
-  const connectRealtime = async () => {
+  const connectRealtime = async (isRetry = false) => {
     initialResponseSentRef.current = false;
     openingCompletedRef.current = false;
     if (openingFallbackTimerRef.current) { clearTimeout(openingFallbackTimerRef.current); openingFallbackTimerRef.current = null; }
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+    if (!isRetry) {
+      // Kullanıcının başlattığı yeni deneme — otomatik yeniden deneme sayacını sıfırla.
+      connectAttemptRef.current = 0;
+      setConnectAttempt(0);
+    }
     setConnectError("");
     setConnecting(true);
-    logDebug("Bağlantı hazırlanıyor; mülakat ekranı ve sayaç ses oturumu hazır olduğunda başlayacak.");
+    logDebug(isRetry
+      ? `Otomatik yeniden bağlanma denemesi ${connectAttemptRef.current}/${CONNECT_BACKOFF_MS.length}...`
+      : "Bağlantı hazırlanıyor; mülakat ekranı ve sayaç ses oturumu hazır olduğunda başlayacak.");
 
     // AudioContext mutlaka kullanıcı tıklamasının senkron akışında oluşturulup açılır.
     // Aksi halde Chrome/Safari bağlantı doğru olsa bile fiziksel ses çıkışını askıda tutabilir.
@@ -923,6 +988,10 @@ export default function RealtimeInterview() {
         // Data channel açıldıysa bağlantı gerçek anlamda hazırdır. UI tek bir session.updated
         // olayına bağlı kalmamalı; hemen canlı ekrana geçer. Mikrofon açılış bitene kadar kapalıdır.
         setConnecting(false);
+        connectAttemptRef.current = 0;
+        setConnectAttempt(0);
+        setConnectError("");
+        if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
         setStep("live");
         if (!startTsRef.current) startInterviewClock();
         logDebug("Data channel hazır; canlı ekran ve sayaç başlatıldı.");
@@ -991,7 +1060,10 @@ export default function RealtimeInterview() {
       if (!sdpResp.ok) {
         const errBody = await sdpResp.text();
         logDebug("⚠️ SDP HATA gövdesi: " + errBody.slice(0, 300));
-        throw new Error("SDP negotiation failed: " + sdpResp.status);
+        const err = new Error("SDP negotiation failed: " + sdpResp.status);
+        err.sdpStatus = sdpResp.status;
+        err.sdpBody = errBody;
+        throw err;
       }
       const answerSdp = await sdpResp.text();
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
@@ -999,10 +1071,23 @@ export default function RealtimeInterview() {
     } catch (e) {
       logDebug("⚠️ GENEL HATA: " + (e.message || e));
       console.error(e);
-      setConnectError("Sesli mülakat bağlantısı kurulamadı: " + (e.message || "bilinmeyen hata"));
+      const mapped = mapConnectError(e);
+      cleanupRealtime();
+      // BÖLÜM 1.5: yalnızca geçici hatalarda (yoğunluk / 5xx / ağ) otomatik yeniden dene.
+      if (mapped.retryable && connectAttemptRef.current < CONNECT_BACKOFF_MS.length) {
+        const wait = CONNECT_BACKOFF_MS[connectAttemptRef.current];
+        connectAttemptRef.current += 1;
+        setConnectAttempt(connectAttemptRef.current);
+        setConnectError(""); // "Bağlanıyor (N/3)" göstergesi devrede kalsın
+        logDebug(`Otomatik yeniden deneme ${connectAttemptRef.current}/${CONNECT_BACKOFF_MS.length} — ${wait}ms sonra`);
+        retryTimerRef.current = setTimeout(() => { connectRealtime(true); }, wait);
+        return; // connecting=true kalır
+      }
+      connectAttemptRef.current = 0;
+      setConnectAttempt(0);
       setConnecting(false);
       setStep("ready");
-      cleanupRealtime();
+      setConnectError(mapped.message); // adaya SADECE nötr, Türkçe mesaj
     }
   };
 
@@ -1264,10 +1349,23 @@ export default function RealtimeInterview() {
             siz doğal şekilde cevap vereceksiniz. Konuşurken araya girebilirsiniz; sistem sizi duyduğunda
             AI konuşmasını durduracaktır. Bitirmek istediğinizde "Mülakatı Bitir" butonunu kullanabilirsiniz.
           </div>
-          {connectError && <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 16 }}>{connectError}</div>}
-          <button onClick={connectRealtime} disabled={connecting} style={{ width: "100%", background: connecting ? "#475569" : "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontSize: 14, fontWeight: 600, cursor: connecting ? "wait" : "pointer" }}>
-            {connecting ? "Bağlantı hazırlanıyor..." : "Mikrofonu Etkinleştir ve Başla"}
-          </button>
+          {connectError && (
+            <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>{connectError}</div>
+          )}
+          {connectError ? (
+            // Hata durumunda: ana buton gizlenir, yerine "Tekrar Dene" gelir.
+            <button onClick={() => connectRealtime(false)} disabled={connecting}
+              style={{ width: "100%", background: connecting ? "#475569" : "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontSize: 14, fontWeight: 600, cursor: connecting ? "wait" : "pointer" }}>
+              {connecting ? "Bağlanıyor..." : "Tekrar Dene"}
+            </button>
+          ) : (
+            <button onClick={() => connectRealtime(false)} disabled={connecting}
+              style={{ width: "100%", background: connecting ? "#475569" : "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontSize: 14, fontWeight: 600, cursor: connecting ? "wait" : "pointer" }}>
+              {connecting
+                ? (connectAttempt > 0 ? `Bağlanıyor (${connectAttempt}/${CONNECT_BACKOFF_MS.length})...` : "Bağlantı kuruluyor...")
+                : "Mikrofonu Etkinleştir ve Başla"}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1304,6 +1402,13 @@ export default function RealtimeInterview() {
         {!finished && (
           <div style={{ background: "#ffffff", border: "1px solid #eef1f4", borderRadius: 20, padding: "56px 40px", boxShadow: "0 1px 3px rgba(15,23,42,0.04)", display: "flex", flexDirection: "column", alignItems: "center", gap: 32 }}>
             <VoiceOrb phase={phase} level={level} />
+            {!currentQuestion && (
+              // Sabit açılış cümlesi kaldırıldığı için, model kendi karşılamasını üretene kadar
+              // aday boş ekrana bakmasın diye bir bağlantı/başlangıç göstergesi.
+              <div style={{ width: "100%", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 18px", color: "#64748b", fontSize: 14, lineHeight: 1.55, textAlign: "center" }}>
+                {phase === "speaking" ? "Mülakatçı konuşuyor…" : "Mülakat başlıyor — mülakatçı birazdan sizi karşılayacak."}
+              </div>
+            )}
             {currentQuestion && (
               <div style={{ width: "100%", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "16px 18px", color: "#0f172a", fontSize: 16, lineHeight: 1.55, textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 7 }}>Mülakatçı sorusu</div>
@@ -1317,7 +1422,9 @@ export default function RealtimeInterview() {
           </div>
         )}
 
-        {debugLog.length > 0 && (
+        {/* DEBUG PANELİ — VARSAYILAN GİZLİ. Aday hiçbir koşulda ham hata gövdesi / teknik metin görmez.
+            Sadece ?debug=1 veya localStorage.medex_debug === "1" ile açılır (geliştirici için). */}
+        {DEBUG_ENABLED && debugLog.length > 0 && (
           <div style={{ background: "#0f172a", borderRadius: 12, padding: 14, maxHeight: 220, overflowY: "auto", fontFamily: "monospace", fontSize: 11 }}>
             <div style={{ color: "#64748b", marginBottom: 6, fontWeight: 700 }}>Bağlantı Teşhis Kaydı (geliştirici için)</div>
             <div style={{ color: "#e2e8f0", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #334155" }}>

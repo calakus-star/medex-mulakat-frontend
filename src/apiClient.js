@@ -52,6 +52,16 @@ export function formatApiError(e, fallback = "Bir hata oluştu, lütfen tekrar d
   }
   const detail = e?.response?.data?.detail;
   if (typeof detail === "string") return { message: detail, timeout: false };
+  // AI hata katmanı (backend) detail'i bir OBJE döner: {message, error_class, retryable}.
+  // Ham kod/HTTP/teknik metin İÇERMEZ — doğrudan kullanıcıya gösterilebilir.
+  if (detail && typeof detail === "object" && !Array.isArray(detail) && typeof detail.message === "string") {
+    return {
+      message: detail.message,
+      timeout: false,
+      errorClass: detail.error_class || null,
+      retryable: !!detail.retryable,
+    };
+  }
   if (Array.isArray(detail)) {
     const message = detail
       .map((d) => {

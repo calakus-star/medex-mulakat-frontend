@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import apiClient, { formatApiError } from "../apiClient";
 import { Card, Input, Select, Button, Alert, Badge, StatTile, Tabs, Table, Avatar, FilterChip, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
@@ -7,6 +7,7 @@ import PositionManager from "./PositionManager";
 import WalkinPanel from "./WalkinPanel";
 import CvPool from "./CvPool";
 import SuperAdminPanel from "./SuperAdminPanel";
+import ErrorLogPanel from "./ErrorLogPanel";
 
 const STATUS_TONE = { pending: "yellow", completed: "green" };
 const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
@@ -55,12 +56,23 @@ export default function AdminDashboard() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState("candidates");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") || "candidates");
   const [positionsRaw, setPositionsRaw] = useState([]);
   const [adminRole, setAdminRole] = useState(null);
   const [listFilter, setListFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [errorLogAlert, setErrorLogAlert] = useState(0); // çözülmemiş kritik hata sayısı (kırmızı bant)
+  const errorLogCandidateFilter = searchParams.get("candidate") || "";
   const navigate = useNavigate();
+
+  const changeTab = (key) => {
+    setTab(key);
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", key);
+    if (key !== "errors") next.delete("candidate");
+    setSearchParams(next, { replace: true });
+  };
 
   const token = localStorage.getItem("admin_token");
 
@@ -75,8 +87,21 @@ export default function AdminDashboard() {
     apiClient.get(`${API_URL}/api/admin/profile`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => setAdminRole(res.data?.admin_role || null))
       .catch(() => {});
+    refreshErrorLogAlert();
     // eslint-disable-next-line
   }, []);
+
+  const refreshErrorLogAlert = async () => {
+    try {
+      const res = await apiClient.get(`${API_URL}/api/admin/error-logs`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { resolved: "0", limit: 1 },
+      });
+      setErrorLogAlert(res.data?.unresolved_critical || 0);
+    } catch (e) {
+      // Hata bandı ikincil bilgi — yüklenemezse sessiz geç.
+    }
+  };
 
   // Grup (kategori) -> Pozisyon bağımlı combo yardımcıları
   const groupOptions = Array.from(new Set(positionsRaw.map(p => p.category || "Genel"))).map(c => ({ value: c, label: c }));
@@ -197,15 +222,26 @@ export default function AdminDashboard() {
           <StatTile label="İşe Al Önerisi" value={stats.hireCount} />
         </div>
 
+        {/* Kırmızı bant: çözülmemiş kritik hata (kota tükenmesi / geçersiz anahtar) varsa */}
+        {errorLogAlert > 0 && tab !== "errors" && (
+          <div
+            onClick={() => changeTab("errors")}
+            style={{ cursor: "pointer", background: "#fef2f2", border: "1px solid #ef4444", color: "#b91c1c", borderRadius: 10, padding: "12px 16px", marginBottom: 14, fontSize: 14, fontWeight: 600 }}
+          >
+            ⚠️ {errorLogAlert} çözülmemiş kritik hata var — mülakatlar başlatılamıyor olabilir. Görüntülemek için tıklayın.
+          </div>
+        )}
+
         {/* Tabs */}
         <Tabs
           active={tab}
-          onChange={setTab}
+          onChange={changeTab}
           items={[
             { key: "candidates", label: "Adaylar" },
             { key: "positions", label: "Pozisyonlar" },
             { key: "walkin", label: "Hızlı Giriş" },
             { key: "cvpool", label: "CV Havuzu" },
+            { key: "errors", label: errorLogAlert > 0 ? `Hata Kayıtları (${errorLogAlert})` : "Hata Kayıtları" },
             ...(adminRole === "superadmin" ? [{ key: "orgs", label: "Kurumlar" }] : []),
           ]}
         />
@@ -213,6 +249,13 @@ export default function AdminDashboard() {
         {tab === "positions" && <PositionManager token={token} />}
         {tab === "walkin" && <WalkinPanel token={token} />}
         {tab === "cvpool" && <CvPool token={token} />}
+        {tab === "errors" && (
+          <ErrorLogPanel
+            token={token}
+            initialCandidateId={errorLogCandidateFilter}
+            onChange={refreshErrorLogAlert}
+          />
+        )}
         {tab === "orgs" && adminRole === "superadmin" && <SuperAdminPanel token={token} />}
         {tab === "candidates" && (
         <>
