@@ -18,6 +18,35 @@ const REALTIME_L3_SAFE_LIMIT_SECONDS = 55 * 60;
 // sınıflarda (yoğunluk / geçici sunucu / ağ) uygulanır; kota / yetki / mikrofon hatasında ASLA.
 const CONNECT_BACKOFF_MS = [1000, 3000, 7000];
 
+// BÖLÜM B1 — Whisper halüsinasyon filtresi. Sesli mülakatta sessizlik/gürültü anlarında
+// transkripsiyon modeli tipik kısa İngilizce kalıplar ("thank you", "bye", "you") uydurur.
+// Bu parçalar aday cevabı sayılmamalı, kritere girmemeli, bitirme niyeti sayılmamalı —
+// ama SİLİNMEMELİ: realtime_events'e "transcription_filtered" olarak kaydedilir.
+const _HALLUCINATION_PHRASES = new Set([
+  "bye", "bye bye", "bye-bye", "goodbye", "good bye", "thank you", "thanks", "thank you.",
+  "thank you very much", "thank you so much", "you", "you.", "mm-hmm", "mmhmm", "mm hmm",
+  "mhm", "uh-huh", "okay", "ok", "o.k.", "switch", "uh", "um", "hmm", "hm", "yeah", "yep",
+  "see you", "see you later", "thanks for watching", "please subscribe", "amara.org",
+  "altyazı m.k.", "i'm sorry", "sorry", "the end",
+]);
+function isLikelyHallucination(text, sessionLang) {
+  const raw = (text || "").trim();
+  if (!raw) return true;
+  const letters = raw.replace(/[^\p{L}\p{N}]/gu, "");
+  if (letters.length < 2) return true;                       // anlamsal içeriği olmayan çok kısa parça
+  const norm = raw.toLowerCase().replace(/[.!?,…"'’]+$/g, "").replace(/\s+/g, " ").trim();
+  const lang = (sessionLang || "tr").toLowerCase();
+  if (lang.startsWith("tr")) {
+    if (_HALLUCINATION_PHRASES.has(norm)) return true;
+    // TR oturumunda, harflerinin tamamı ASCII (Türkçe karakter yok) ve <= 2 kelime olan
+    // çok kısa parçalar büyük olasılıkla İngilizce dolgu/halüsinasyon.
+    const words = norm.split(" ").filter(Boolean);
+    const asciiOnly = /^[a-z0-9\s'.-]+$/.test(norm);
+    if (asciiOnly && words.length <= 2 && letters.length <= 6) return true;
+  }
+  return false;
+}
+
 // Debug paneli VARSAYILAN KAPALI — aday hiçbir koşulda ham hata görmez.
 // Sadece ?debug=1 veya localStorage.medex_debug === "1" ile açılır (geliştirici için).
 const DEBUG_ENABLED = (() => {
@@ -204,6 +233,7 @@ export default function RealtimeInterview() {
   const heartbeatRef = useRef(null);
   const endInterviewHandledRef = useRef(false); // aynı end_interview tool call'ı 2 farklı event'ten çift işlememek için
   const coverageThresholdRef = useRef(60); // depth_tier'a göre backend'den gelen kriter kapsanma eşiği
+  const lastCriteriaCoverageRef = useRef(null); // A4: modelin end_interview'da bildirdiği {kriter: 0-100}
   // /api/realtime/session yanıtındaki AI_PRICING_PER_1M satırı — maliyet formülü SADECE burayı okur,
   // backend'deki fiyat tablosuyla iki ayrı kopya olarak sapmasın diye kendi rakamını taşımaz.
   const pricingRef = useRef({});
@@ -708,6 +738,7 @@ export default function RealtimeInterview() {
         duration_seconds: Math.floor(elapsedRef.current),
         answered_count: answeredCountRef.current,
         end_reason: endReason,
+        criteria_coverage: lastCriteriaCoverageRef.current || undefined,
         realtime_usage: finalUsageDelta,
         events: drainRealtimeEvents(),
       }, { headers: { Authorization: `Bearer ${token}` } });
@@ -1093,6 +1124,10 @@ export default function RealtimeInterview() {
 
   const handleEndInterviewRequest = (reasonRaw, criteriaCoverage) => {
     const reason = ["aday_talebi", "uygunsuz_davranis"].includes(reasonRaw) ? reasonRaw : "tamamlandı";
+    // A4: modelin bildirdiği kriter kapsanma yüzdeleri backend'e taşınır (rapor + yeterlilik kararı).
+    if (criteriaCoverage && typeof criteriaCoverage === "object") lastCriteriaCoverageRef.current = criteriaCoverage;
+    // D1: model tool call'ı — ne zaman, hangi reason, kapsanma ile (admin panel oturum kaydı).
+    pushRealtimeEvent("end_interview", { reason: reasonRaw, criteria_coverage: criteriaCoverage || null });
     if (reason !== "tamamlandı") { submitReport(reason); return; }
 
     // Kriter-bazlı bitiş kontrolü: eski "en az 6 ham cevap" sayacı yerine, AI'ın her kriter
@@ -1224,8 +1259,14 @@ export default function RealtimeInterview() {
         // FAZ D: aday turu sinyali — ses metrikleri (tur eşleştirme / yanıt gecikmesi).
         pushRealtimeEvent("conversation.item.input_audio_transcription.completed", { has_text: !!evt.transcript });
         if (evt.transcript) {
-          appendTranscript("aday", evt.transcript);
-          answeredCountRef.current += 1;
+          if (isLikelyHallucination(evt.transcript, candidate?.interview_language)) {
+            // BÖLÜM B1: aday cevabı SAYILMAZ, kritere girmez, bitirme niyeti sayılmaz — ama kaydedilir.
+            pushRealtimeEvent("transcription_filtered", { text: String(evt.transcript).slice(0, 200), reason: "kısa/anlamsız İngilizce dolgu — olası Whisper halüsinasyonu" });
+            logDebug("B1: halüsinasyon şüphesi, transkripte alınmadı: " + JSON.stringify(evt.transcript).slice(0, 80));
+          } else {
+            appendTranscript("aday", evt.transcript);
+            answeredCountRef.current += 1;
+          }
         }
         break;
       case "response.audio_transcript.delta":

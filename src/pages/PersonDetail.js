@@ -93,6 +93,7 @@ export default function PersonDetail() {
   const [editingAttemptId, setEditingAttemptId] = useState(null);
   const [attemptMode, setAttemptMode] = useState("edit"); // "edit" | "new" — aynı form iki işi görür
   const [transcriptOpen, setTranscriptOpen] = useState(false); // BÖLÜM 2.2 — katlanabilir konuşma metni
+  const [sessionOpen, setSessionOpen] = useState(false); // BÖLÜM D1 — katlanabilir tam oturum kaydı
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [editCvFile, setEditCvFile] = useState(null);
   // Değişmemiş alanları PATCH gövdesinden dışlayabilmek için formun açılış anlık
@@ -158,11 +159,12 @@ export default function PersonDetail() {
     setEvaluating(false);
   };
 
-  const viewReport = async (candidateId) => {
+  const viewReport = async (candidateId, level) => {
     setModalError("");
     setTranscriptOpen(false);
     try {
-      const res = await apiClient.get(`${API_URL}/api/admin/interviews/${candidateId}`, authHeaders);
+      const url = level ? `${API_URL}/api/admin/interviews/${candidateId}?level=${level}` : `${API_URL}/api/admin/interviews/${candidateId}`;
+      const res = await apiClient.get(url, authHeaders);
       setSelectedReport(res.data);
       try {
         const snapRes = await apiClient.get(`${API_URL}/api/admin/snapshots/${candidateId}`, authHeaders);
@@ -173,6 +175,22 @@ export default function PersonDetail() {
       }
     } catch (e) {
       setError("Rapor bulunamadı");
+    }
+  };
+
+  const [regenerating, setRegenerating] = useState(false);
+  const regenerateReport = async (candidateId, level) => {
+    if (!window.confirm("Rapor, KAYITLI transkriptten yeniden üretilecek. Yeni bir mülakat açılmaz. Mevcut skor/öneri değişebilir. Devam edilsin mi?")) return;
+    setRegenerating(true);
+    setModalError("");
+    try {
+      const q = level ? `?level=${level}` : "";
+      await apiClient.post(`${API_URL}/api/admin/interviews/${candidateId}/regenerate-report${q}`, {}, authHeaders);
+      setModalError("Rapor yeniden üretiliyor; birkaç dakika içinde hazır olacak. Bu pencereyi kapatıp tekrar açarak sonucu görebilirsiniz.");
+    } catch (e) {
+      setModalError(formatApiError(e, "Rapor yeniden üretilemedi").message);
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -538,7 +556,7 @@ export default function PersonDetail() {
                         <a href={`/admin/panel?tab=errors&candidate=${a.candidate_id}`} style={{ color: colors.blue }}>İlgili hata kaydı</a>
                       )}
                       {a.attempt_status === "terminated" && a.interview_completed_at && (
-                        <button onClick={() => viewReport(a.candidate_id)}
+                        <button onClick={() => viewReport(a.candidate_id, a.level)}
                           style={{ background: "none", border: "none", padding: 0, color: colors.blue, cursor: "pointer", fontSize: 12 }}>
                           İhlal kaydını raporda gör
                         </button>
@@ -549,7 +567,7 @@ export default function PersonDetail() {
 
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
                   {a.status === "completed" && (
-                    <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => viewReport(a.candidate_id)}>Rapor</Button>
+                    <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => viewReport(a.candidate_id, a.level)}>Rapor</Button>
                   )}
                   {a.status !== "completed" && (a.processing_status === "processing" || a.processing_status === "failed") && (
                     <Button variant="secondary" disabled style={{ padding: "6px 12px", fontSize: 12, opacity: 0.5, cursor: "not-allowed" }}
@@ -687,6 +705,7 @@ export default function PersonDetail() {
               <div style={{ display: "flex", gap: 8 }}>
                 <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadTranscript(selectedReport.candidate_id, selectedReport.name, selectedReport.level)}>Transkripti İndir</Button>
                 <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadPdf(selectedReport.candidate_id, selectedReport.name)}>PDF İndir</Button>
+                <Button variant="secondary" disabled={regenerating} style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => regenerateReport(selectedReport.candidate_id, selectedReport.level)}>{regenerating ? "Başlatılıyor…" : "Raporu Yeniden Üret"}</Button>
                 <button onClick={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted, fontSize: 20 }}>✕</button>
               </div>
             </div>
@@ -839,6 +858,91 @@ export default function PersonDetail() {
                 )}
               </div>
             )}
+
+            {/* ═══ BÖLÜM D1 — Tam Oturum Kaydı (ham, yalnızca yönetici) ═══ */}
+            {(() => {
+              const r = selectedReport;
+              const sd = r.system_decision;
+              const cov = r.criteria_coverage;
+              const ca = r.criterion_attempts;
+              const filtered = r.filtered_transcriptions || [];
+              const tools = r.tool_calls || [];
+              const conn = r.connection_events || [];
+              const allEv = r.realtime_events || [];
+              const frames = r.camera_frames || [];
+              const hasAny = sd || cov || ca || filtered.length || tools.length || conn.length || allEv.length || frames.length;
+              if (!hasAny) return null;
+              const mmss = (ms) => { const s = Math.max(0, Math.round((ms || 0) / 1000)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
+              const Blk = ({ title, children }) => (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: colors.inkSoft, marginBottom: 4 }}>{title}</div>
+                  {children}
+                </div>
+              );
+              const Pre = ({ obj }) => (
+                <pre style={{ margin: 0, padding: 10, background: "#0f172a", color: "#e2e8f0", borderRadius: 6, fontSize: 11.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 200, overflowY: "auto" }}>
+                  {JSON.stringify(obj, null, 1)}
+                </pre>
+              );
+              return (
+                <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, marginBottom: 20, overflow: "hidden" }}>
+                  <button onClick={() => setSessionOpen(o => !o)}
+                    style={{ width: "100%", textAlign: "left", background: colors.surfaceAlt, border: "none", padding: "12px 14px", cursor: "pointer", fontWeight: 700, color: colors.ink, fontSize: 14 }}>
+                    {sessionOpen ? "▾" : "▸"} Tam Oturum Kaydı (ham — yönetici)
+                  </button>
+                  {sessionOpen && (
+                    <div style={{ padding: 14, background: colors.surface, maxHeight: 460, overflowY: "auto" }}>
+                      {sd && (
+                        <Blk title={`Sistem kararı: ${sd.decision || "-"}`}>
+                          <div style={{ fontSize: 12.5, color: colors.inkSoft, marginBottom: 4 }}>{sd.reason}</div>
+                          {sd.meta && <Pre obj={sd.meta} />}
+                        </Blk>
+                      )}
+                      {cov && <Blk title="Kriter kapsanma (model bildirimi, 0-100)"><Pre obj={cov} /></Blk>}
+                      {ca && <Blk title="Kriter yeniden-sorma sayacı (L1 metin)"><Pre obj={ca} /></Blk>}
+                      {filtered.length > 0 && (
+                        <Blk title={`Filtrelenen transkripsiyon girdileri (${filtered.length}) — halüsinasyon şüphesi, aday cevabı sayılmadı`}>
+                          {filtered.map((e, i) => (
+                            <div key={i} style={{ fontSize: 12, color: colors.inkSoft, marginBottom: 3 }}>
+                              <span style={{ color: colors.mutedLight }}>[{mmss(e.elapsed_ms)}]</span> "{e.data?.text}" <span style={{ color: colors.mutedLight }}>— {e.data?.reason}</span>
+                            </div>
+                          ))}
+                        </Blk>
+                      )}
+                      {tools.length > 0 && (
+                        <Blk title={`Model tool call'ları (${tools.length})`}>
+                          {tools.map((e, i) => (
+                            <div key={i} style={{ fontSize: 12, color: colors.inkSoft, marginBottom: 3 }}>
+                              <span style={{ color: colors.mutedLight }}>[{mmss(e.elapsed_ms)}]</span> <strong>{e.type}</strong> {e.type === "end_interview" ? `reason=${e.data?.reason || "-"}` : ""}
+                            </div>
+                          ))}
+                        </Blk>
+                      )}
+                      {conn.length > 0 && (
+                        <Blk title={`Bağlantı / ses olayları (${conn.length})`}>
+                          {conn.slice(0, 120).map((e, i) => (
+                            <div key={i} style={{ fontSize: 11.5, color: colors.inkSoft }}>
+                              <span style={{ color: colors.mutedLight }}>[{mmss(e.elapsed_ms)}]</span> {e.type}
+                              {e.type === "end_reason_downgraded" ? ` (${e.data?.raw} → ${e.data?.effective})` : ""}
+                            </div>
+                          ))}
+                        </Blk>
+                      )}
+                      {frames.length > 0 && (
+                        <Blk title={`Kamera kareleri (${frames.length})`}>
+                          <div style={{ fontSize: 11.5, color: colors.mutedLight }}>
+                            {frames.map(f => f.elapsed_ms != null ? mmss(f.elapsed_ms) : (f.captured_at || f.id)).join(" · ")}
+                          </div>
+                        </Blk>
+                      )}
+                      {allEv.length > 0 && (
+                        <Blk title={`Tüm ham realtime olayları (${allEv.length})`}><Pre obj={allEv} /></Blk>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <ReportText text={selectedReport.report} />
             {selectedReport.ai_note && (
