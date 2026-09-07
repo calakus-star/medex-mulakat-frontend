@@ -22,12 +22,13 @@ const CONNECT_BACKOFF_MS = [1000, 3000, 7000];
 // transkripsiyon modeli tipik kısa İngilizce kalıplar ("thank you", "bye", "you") uydurur.
 // Bu parçalar aday cevabı sayılmamalı, kritere girmemeli, bitirme niyeti sayılmamalı —
 // ama SİLİNMEMELİ: realtime_events'e "transcription_filtered" olarak kaydedilir.
+// backend main.py:_HALLUCINATION_PHRASES ile AYNI liste tutulmalı.
 const _HALLUCINATION_PHRASES = new Set([
   "bye", "bye bye", "bye-bye", "goodbye", "good bye", "thank you", "thanks", "thank you.",
   "thank you very much", "thank you so much", "you", "you.", "mm-hmm", "mmhmm", "mm hmm",
-  "mhm", "uh-huh", "okay", "ok", "o.k.", "switch", "uh", "um", "hmm", "hm", "yeah", "yep",
-  "see you", "see you later", "thanks for watching", "please subscribe", "amara.org",
-  "altyazı m.k.", "i'm sorry", "sorry", "the end",
+  "mhm", "uh-huh", "okay", "ok", "o.k.", "switch", "switch.", "uh", "um", "hmm", "hm",
+  "yeah", "yep", "yes", "see you", "see you later", "thanks for watching", "please subscribe",
+  "amara.org", "altyazı m.k.", "i'm sorry", "sorry", "the end", "okay.", "so", "right",
 ]);
 function isLikelyHallucination(text, sessionLang) {
   const raw = (text || "").trim();
@@ -36,13 +37,19 @@ function isLikelyHallucination(text, sessionLang) {
   if (letters.length < 2) return true;                       // anlamsal içeriği olmayan çok kısa parça
   const norm = raw.toLowerCase().replace(/[.!?,…"'’]+$/g, "").replace(/\s+/g, " ").trim();
   const lang = (sessionLang || "tr").toLowerCase();
-  if (lang.startsWith("tr")) {
-    if (_HALLUCINATION_PHRASES.has(norm)) return true;
-    // TR oturumunda, harflerinin tamamı ASCII (Türkçe karakter yok) ve <= 2 kelime olan
-    // çok kısa parçalar büyük olasılıkla İngilizce dolgu/halüsinasyon.
-    const words = norm.split(" ").filter(Boolean);
-    const asciiOnly = /^[a-z0-9\s'.-]+$/.test(norm);
-    if (asciiOnly && words.length <= 2 && letters.length <= 6) return true;
+  if (!lang.startsWith("tr")) return false;
+  if (_HALLUCINATION_PHRASES.has(norm)) return true;
+  const words = norm.split(" ").filter(Boolean);
+  const asciiOnly = /^[a-z0-9\s'.-]+$/.test(norm);
+  if (asciiOnly && words.length <= 2 && letters.length <= 6) return true;
+  // KALEM 3: cümle, bilinen halüsinasyon kalıplarının TEKRARINDAN ibaret mi?
+  if (asciiOnly) {
+    const chunks = norm.split(/[.!?,;]+/).map(c => c.trim().replace(/\s+/g, " ")).filter(Boolean);
+    if (chunks.length && chunks.every(c => _HALLUCINATION_PHRASES.has(c))) return true;
+    for (const ph of ["thank you", "see you", "bye", "bye bye", "yes", "you", "okay", "so"]) {
+      const esc = ph.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(`^(?:${esc}\\s*){2,}$`).test(norm)) return true;
+    }
   }
   return false;
 }

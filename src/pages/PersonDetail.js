@@ -911,15 +911,24 @@ export default function PersonDetail() {
                       )}
                       {mcov && (
                         <Blk title="Modalite veri kapsamı">
-                          <div style={{ fontSize: 12.5, color: colors.inkSoft }}>
-                            Kamera kareleri: <strong>{mcov.kare_sayisi}</strong>
-                            {mcov.ilk_dk != null ? ` (mülakatın ${mcov.ilk_dk}.–${mcov.son_dk}. dakikaları arası)` : ""}
-                            {mcov.kumelenme_uyarisi ? <span style={{ color: "#b91c1c", fontWeight: 700 }}> — ⚠ dar aralıkta kümelenmiş, oturumun çoğu gözlemsiz</span> : ""}
-                            <br />
-                            Ses metrikleri: {mcov.ses_metrikleri_var
-                              ? <span style={{ color: colors.green, fontWeight: 600 }}>toplandı</span>
-                              : <span style={{ color: "#b91c1c", fontWeight: 600 }}>TOPLANAMADI</span>}
-                          </div>
+                          {(() => {
+                            const fline = (label, d) => {
+                              if (!d || !d.n) return `${label}: 0`;
+                              const span = d.ilk_dk != null ? ` (${d.ilk_dk}.–${d.son_dk}. dk)` : "";
+                              return <>{label}: <strong>{d.n}</strong>{span}
+                                {d.kumelenme ? <span style={{ color: "#b91c1c", fontWeight: 700 }}> — ⚠ kümelenmiş</span> : null}</>;
+                            };
+                            return (
+                              <div style={{ fontSize: 12.5, color: colors.inkSoft, lineHeight: 1.7 }}>
+                                {fline("Doğrulama kareleri (panel/PDF)", mcov.dogrulama)}<br />
+                                {fline("Mimik analiz kareleri (AI)", mcov.mimik)}<br />
+                                Ses metrikleri: {mcov.ses_metrikleri_var
+                                  ? <span style={{ color: colors.green, fontWeight: 600 }}>toplandı</span>
+                                  : <span style={{ color: "#b91c1c", fontWeight: 600 }}>TOPLANAMADI</span>}
+                                {mcov.ses_ozet && <Pre obj={mcov.ses_ozet} />}
+                              </div>
+                            );
+                          })()}
                         </Blk>
                       )}
                       {cov && <Blk title="Kriter kapsanma (model bildirimi, 0-100)"><Pre obj={cov} /></Blk>}
