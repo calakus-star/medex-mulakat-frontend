@@ -513,7 +513,11 @@ export default function PersonDetail() {
                       <Badge tone={ATTEMPT_TONE[a.attempt_status] || "yellow"}>{a.attempt_status_label || STATUS_LABELS[a.status] || a.status}</Badge>
                       {a.processing_status === "processing" && <Badge tone="yellow">⏳ Rapor Hazırlanıyor</Badge>}
                       {a.processing_status === "failed" && <Badge tone="red" title={a.processing_error || ""}>⚠ Rapor Hatası</Badge>}
-                      {a.score !== null && a.score !== undefined && <span style={{ fontWeight: 700, color: colors.ink, fontSize: 13 }}>{a.score}/100</span>}
+                      {a.score !== null && a.score !== undefined && (
+                        <span style={{ fontWeight: 700, color: colors.ink, fontSize: 13 }} title={a.score_profile != null ? `PUAN 1 (pozisyon): ${a.score_position ?? "-"} · PUAN 2 (profil): ${a.score_profile}` : ""}>
+                          {a.score}/100{a.score_profile != null ? ` (P${a.score_position ?? "-"}·K${a.score_profile})` : ""}
+                        </span>
+                      )}
                       {a.recommendation && <Badge tone={REC_TONE[a.recommendation] || "neutral"}>{a.recommendation}</Badge>}
                       {a.reapply_allowed ? <Badge tone="green">Tekrar başvuru açık</Badge> : null}
                     </div>
@@ -722,13 +726,30 @@ export default function PersonDetail() {
               )}
             </div>
             <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-              <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
-                <div style={{ fontSize: 26, fontWeight: 700, color: colors.ink }}>{selectedReport.score ?? "-"}</div>
-                <div style={{ fontSize: 12, color: colors.muted }}>/ 100</div>
-              </div>
+              {selectedReport.score_profile != null ? (
+                <>
+                  <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.score_position ?? "-"}</div>
+                    <div style={{ fontSize: 11, color: colors.muted }}>PUAN 1 · Pozisyon</div>
+                  </div>
+                  <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.score_profile}</div>
+                    <div style={{ fontSize: 11, color: colors.muted }}>PUAN 2 · Profil</div>
+                  </div>
+                  <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: 26, fontWeight: 700, color: colors.ink }}>{selectedReport.score ?? "-"}</div>
+                    <div style={{ fontSize: 11, color: colors.muted }}>Ortalama / 100</div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: colors.ink }}>{selectedReport.score ?? "-"}</div>
+                  <div style={{ fontSize: 12, color: colors.muted }}>/ 100</div>
+                </div>
+              )}
               <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
                 <Badge tone={REC_TONE[selectedReport.recommendation] || "neutral"}>{selectedReport.recommendation || "-"}</Badge>
-                <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Öneri</div>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Öneri {selectedReport.score_profile != null ? "(PUAN 1'e göre)" : ""}</div>
               </div>
             </div>
             {/* FAZ D: ortak rapor muhalif denetçisi çalışmadıysa görünür uyarı — sadece admin tarafı. */}

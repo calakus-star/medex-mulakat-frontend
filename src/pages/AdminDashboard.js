@@ -420,7 +420,15 @@ export default function AdminDashboard() {
                         <div style={{ marginTop: 4 }}><Badge tone="red" title={c.processing_error || ""}>⚠ Rapor Hatası</Badge></div>
                       )}
                     </td>
-                    <td style={{ padding: "10px 12px", fontWeight: 700, color: colors.ink }}>{formatScore(c.score)}</td>
+                    <td style={{ padding: "10px 12px", fontWeight: 700, color: colors.ink }}>
+                      {formatScore(c.score)}
+                      {c.score_profile != null && (
+                        <div style={{ fontSize: 10.5, fontWeight: 600, color: colors.mutedLight, marginTop: 2 }}
+                             title={`PUAN 1 (pozisyon): ${c.score_position ?? "-"} · PUAN 2 (profil): ${c.score_profile}`}>
+                          P{c.score_position ?? "-"} · K{c.score_profile}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ padding: "10px 12px" }}>
                       {rec !== "-" ? <Badge tone={REC_TONE[rec] || "neutral"}>{rec}</Badge> : "-"}
                     </td>
