@@ -892,7 +892,9 @@ export default function PersonDetail() {
               const allEv = r.realtime_events || [];
               const frames = r.camera_frames || [];
               const mcov = r.modality_coverage;
-              const hasAny = sd || cov || ca || filtered.length || tools.length || conn.length || allEv.length || frames.length || mcov;
+              let scoreRevisions = [];
+              try { scoreRevisions = r.reviewer_score_revision_json ? JSON.parse(r.reviewer_score_revision_json) : []; } catch (e) { scoreRevisions = []; }
+              const hasAny = sd || cov || ca || filtered.length || tools.length || conn.length || allEv.length || frames.length || mcov || r.report_tech_note || scoreRevisions.length;
               if (!hasAny) return null;
               const mmss = (ms) => { const s = Math.max(0, Math.round((ms || 0) / 1000)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
               const Blk = ({ title, children }) => (
@@ -918,6 +920,24 @@ export default function PersonDetail() {
                         <div style={{ fontSize: 12, color: colors.blue, marginBottom: 10, fontWeight: 600 }}>
                           ⟳ Rapor yeniden üretildi: {formatDateTR(r.report_regenerated_at)} (orijinal bitiş saati korundu)
                         </div>
+                      )}
+                      {(r.interview_ended_at || r.report_generated_at) && (
+                        <div style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>
+                          Mülakat bitişi: {formatDateTR(r.completed_at)}
+                          {r.report_generated_at ? ` · Rapor üretimi: ${formatDateTR(r.report_generated_at)}` : ""}
+                        </div>
+                      )}
+                      {r.report_tech_note && (
+                        <Blk title="Teknik not (yalnızca yönetici)">
+                          <div style={{ fontSize: 12.5, color: "#b45309" }}>{r.report_tech_note}</div>
+                        </Blk>
+                      )}
+                      {scoreRevisions.length > 0 && (
+                        <Blk title="İkinci model puan revizyonu (kanıtsız iddia → %40 düşüş)">
+                          <ul style={{ margin: "4px 0 6px 16px", padding: 0, fontSize: 12.5, color: colors.inkSoft }}>
+                            {scoreRevisions.map((rv, i) => <li key={i}>{rv.kriter}: {rv.eski} → <strong>{rv.yeni}</strong></li>)}
+                          </ul>
+                        </Blk>
                       )}
                       {sd && (
                         <Blk title={`Sistem kararı: ${sd.decision || "-"}`}>
