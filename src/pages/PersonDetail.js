@@ -894,7 +894,7 @@ export default function PersonDetail() {
               const mcov = r.modality_coverage;
               let scoreRevisions = [];
               try { scoreRevisions = r.reviewer_score_revision_json ? JSON.parse(r.reviewer_score_revision_json) : []; } catch (e) { scoreRevisions = []; }
-              const hasAny = sd || cov || ca || filtered.length || tools.length || conn.length || allEv.length || frames.length || mcov || r.report_tech_note || scoreRevisions.length;
+              const hasAny = sd || cov || ca || filtered.length || tools.length || conn.length || allEv.length || frames.length || mcov || r.report_tech_note || scoreRevisions.length || r.raw_report;
               if (!hasAny) return null;
               const mmss = (ms) => { const s = Math.max(0, Math.round((ms || 0) / 1000)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
               const Blk = ({ title, children }) => (
@@ -937,6 +937,11 @@ export default function PersonDetail() {
                           <ul style={{ margin: "4px 0 6px 16px", padding: 0, fontSize: 12.5, color: colors.inkSoft }}>
                             {scoreRevisions.map((rv, i) => <li key={i}>{rv.kriter}: {rv.eski} → <strong>{rv.yeni}</strong></li>)}
                           </ul>
+                        </Blk>
+                      )}
+                      {r.raw_report && (
+                        <Blk title="Ham model çıktısı (işlenmemiş — denetçi/revizyon/hizalama öncesi)">
+                          <pre style={{ margin: 0, padding: 10, background: "#0f172a", color: "#e2e8f0", borderRadius: 6, fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 260, overflowY: "auto" }}>{r.raw_report}</pre>
                         </Blk>
                       )}
                       {sd && (
