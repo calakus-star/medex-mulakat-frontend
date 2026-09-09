@@ -3,15 +3,21 @@ import apiClient, { formatApiError } from "../apiClient";
 import { Card, Input, Select, Button, Alert, ChipButton, Badge, colors, FONT } from "../components/Layout";
 import { API_URL } from "../App";
 
+// B3 — her pozisyon TAM 6 kriter içerir (backend'de de zorlanır). Pozisyona özgü ek beklentiler
+// kriter değil, aday kaydındaki "AI notu" alanından iletilir.
+const POSITION_CRITERIA_COUNT = 6;
 function emptyCriterion() {
-  return { name: "", weight: 10, desc: "" };
+  return { name: "", weight: 0, desc: "" };
+}
+function sixEmptyCriteria() {
+  return Array.from({ length: POSITION_CRITERIA_COUNT }, emptyCriterion);
 }
 
 export default function PositionManager({ token }) {
   const [positions, setPositions] = useState([]);
   const [editing, setEditing] = useState(null); // null = list, "new" = new form, id = editing
   const categories = ["Klinik Araştırma", "Medikal / Regülasyon", "Veri Yönetimi", "Kalite", "Laboratuvar", "Bilgi Teknolojileri", "İnsan Kaynakları", "Finans", "Satış & Pazarlama", "Genel"].map(c => ({ value: c, label: c }));
-  const [form, setForm] = useState({ name: "", category: "Genel", role_description: "", criteria: [emptyCriterion()] });
+  const [form, setForm] = useState({ name: "", category: "Genel", role_description: "", criteria: sixEmptyCriteria() });
   const [error, setError] = useState("");
 
   useEffect(() => { fetchPositions(); }, []);
@@ -28,18 +34,24 @@ export default function PositionManager({ token }) {
   const totalWeight = form.criteria.reduce((s, c) => s + (parseInt(c.weight) || 0), 0);
 
   const startNew = () => {
-    setForm({ name: "", category: "Genel", role_description: "", criteria: [emptyCriterion()] });
+    setForm({ name: "", category: "Genel", role_description: "", criteria: sixEmptyCriteria() });
     setEditing("new");
     setError("");
   };
 
   const startEdit = (pos) => {
-    setForm({ name: pos.name, category: pos.category || "Genel", role_description: pos.role_description, criteria: pos.criteria });
+    // 6'dan az/çok gelen eski kayıtları da 6'ya normalize et (fazlası kesilmez, kullanıcı birleştirir)
+    let cr = Array.isArray(pos.criteria) ? [...pos.criteria] : [];
+    while (cr.length < POSITION_CRITERIA_COUNT) cr.push(emptyCriterion());
+    setForm({ name: pos.name, category: pos.category || "Genel", role_description: pos.role_description, criteria: cr });
     setEditing(pos.id);
     setError("");
   };
 
-  const addCriterion = () => setForm({ ...form, criteria: [...form.criteria, emptyCriterion()] });
+  const addCriterion = () => {
+    if (form.criteria.length >= POSITION_CRITERIA_COUNT) return;
+    setForm({ ...form, criteria: [...form.criteria, emptyCriterion()] });
+  };
   const removeCriterion = (i) => setForm({ ...form, criteria: form.criteria.filter((_, idx) => idx !== i) });
   const updateCriterion = (i, field, value) => {
     const updated = [...form.criteria];
@@ -50,6 +62,10 @@ export default function PositionManager({ token }) {
   const save = async () => {
     setError("");
     if (!form.name.trim()) { setError("Pozisyon adı gerekli"); return; }
+    if (form.criteria.length !== POSITION_CRITERIA_COUNT) {
+      setError(`Her pozisyon tam ${POSITION_CRITERIA_COUNT} kriter içermelidir (şu an ${form.criteria.length}). Pozisyona özgü ek beklentileri aday kaydındaki "AI notu" alanından iletin.`);
+      return;
+    }
     if (form.criteria.some(c => !c.name.trim())) { setError("Tüm kriterlere isim girilmeli"); return; }
 
     try {
@@ -99,10 +115,15 @@ export default function PositionManager({ token }) {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: colors.inkSoft }}>Değerlendirme Kriterleri</label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: colors.inkSoft }}>
+            Değerlendirme Kriterleri <span style={{ color: form.criteria.length === POSITION_CRITERIA_COUNT ? colors.green : colors.yellow }}>({form.criteria.length}/{POSITION_CRITERIA_COUNT})</span>
+          </label>
           <span style={{ fontSize: 13, fontWeight: 600, color: totalWeight === 100 ? colors.green : colors.yellow }}>
             Toplam: {totalWeight}/100
           </span>
+        </div>
+        <div style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>
+          Her pozisyon tam {POSITION_CRITERIA_COUNT} kriter içerir. Pozisyona özgü ek beklentileri aday kaydındaki "AI notu" alanından iletin.
         </div>
 
         {form.criteria.map((c, i) => (
@@ -125,9 +146,11 @@ export default function PositionManager({ token }) {
             <button onClick={() => removeCriterion(i)} style={{ background: colors.redBg, color: colors.red, border: "none", borderRadius: 6, cursor: "pointer", height: 38 }}>✕</button>
           </div>
         ))}
-        <button onClick={addCriterion} style={{ background: colors.surfaceAlt, color: colors.ink, border: `1px solid ${colors.border}`, borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 20, fontFamily: FONT }}>
-          + Kriter Ekle
-        </button>
+        {form.criteria.length < POSITION_CRITERIA_COUNT && (
+          <button onClick={addCriterion} style={{ background: colors.surfaceAlt, color: colors.ink, border: `1px solid ${colors.border}`, borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 20, fontFamily: FONT }}>
+            + Kriter Ekle ({form.criteria.length}/{POSITION_CRITERIA_COUNT})
+          </button>
+        )}
 
         <div style={{ display: "flex", gap: 10 }}>
           <Button onClick={save}>Kaydet</Button>
