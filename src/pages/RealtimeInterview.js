@@ -265,6 +265,7 @@ export default function RealtimeInterview() {
   const snapshotTakenRef = useRef([false, false, false, false]);
   const savedSnapshotCountRef = useRef(0);
   const snapshotInFlightRef = useRef(false);
+  const earlyFrameDoneRef = useRef(false); // GÖREV 3.2 — erken varlık teyidi karesi bir kez
 
   useEffect(() => {
     if (!token) { navigate("/mulakat"); return; }
@@ -655,17 +656,16 @@ export default function RealtimeInterview() {
     });
   }, [captureSnapshot]);
 
-  // ===== FAZ D: MİMİK ANALİZ KARELERİ — doğrulama karelerinden AYRI =====
-  // 45 sn'de bir, üst sınır 24. reason='mimic_sample' ile gönderilir; backend bunları ayrı
-  // kotada tutar ve panel/PDF'te GÖSTERMEZ. Kendi in-flight/sayaç ref'leri var; doğrulama
-  // karesi akışına (savedSnapshotCountRef, snapshotInFlightRef) hiç dokunmaz.
+  // ===== MİMİK / KARE HAVUZU (GÖREV 3.2 — doğrulama kareleri ARTIK bu havuzdan seçiliyor) =====
+  // reason='mimic_sample'. Backend hem mimik analizi hem doğrulama karesi seçimi (L2=4, L3=6,
+  // süreye yayılmış) için BU havuzu kullanır — ayrı bir doğrulama seti yok.
   const mimicFrameCountRef = useRef(0);
   const mimicInFlightRef = useRef(false);
-  // Aralık sabit değil: session yanıtındaki target_seconds'a göre (aralik = target_seconds/24),
-  // alt sınır 30 sn. Böylece 24 kare mülakatın planlanan tamamına eşit dağılır.
-  const [mimicIntervalMs, setMimicIntervalMs] = useState(45000);
+  // GÖREV 3.4 — aralık = target_seconds/32 (24 değil): mülakat hedeften ~%25 kısa bitse bile
+  // ~24 kare toplanır. Alt sınır 20 sn.
+  const [mimicIntervalMs, setMimicIntervalMs] = useState(30000);
   const captureMimicFrame = useCallback(async () => {
-    if (mimicInFlightRef.current || mimicFrameCountRef.current >= 24 || finishedRef.current) return;
+    if (mimicInFlightRef.current || mimicFrameCountRef.current >= 32 || finishedRef.current) return;
     const video = videoRef.current;
     if (!video || video.readyState < 2 || !video.videoWidth) return;
     const candidateId = candidate ? candidate.id : null;
@@ -699,18 +699,17 @@ export default function RealtimeInterview() {
     return () => clearInterval(id);
   }, [step, finished, captureMimicFrame, mimicIntervalMs]);
 
-  // Sabit bir toplam süre olmadığı için (adaptif konuşma) oran yerine mutlak saniye
-  // kontrol noktaları kullanılır: erken varlık doğrulaması + orta + geç + son.
+  // GÖREV 3.2 — AYRI DOĞRULAMA KARESİ SETİ KALDIRILDI. Eskiden burada [8, 45, 120, 240] sn
+  // kontrol noktalarında ayrı "doğrulama" kareleri çekiliyordu; hepsi ilk ~4 dakikaya kümeleniyordu.
+  // Artık doğrulama kareleri backend'de MİMİK havuzundan, mülakat süresine yayılmış seçiliyor
+  // (select_verification_frames). Erken bir varlık teyidi için ilk kareyi hemen tetikleriz:
   useEffect(() => {
     if (step !== "live" || finished) return;
-    const checkpoints = [8, 45, 120, 240];
-    checkpoints.forEach((seconds, idx) => {
-      if (!snapshotTakenRef.current[idx] && elapsed >= seconds) {
-        snapshotTakenRef.current[idx] = true;
-        ensureSnapshot(`time_${idx + 1}`);
-      }
-    });
-  }, [elapsed, step, finished, ensureSnapshot]);
+    if (elapsed >= 5 && !earlyFrameDoneRef.current) {
+      earlyFrameDoneRef.current = true;
+      captureMimicFrame();
+    }
+  }, [elapsed, step, finished, captureMimicFrame]);
 
   // Sekme kapanırken/uygulamadan çıkılırken SON bir kez, en iyi çaba ("best effort") ile
   // sendBeacon üzerinden kayıt dener. sendBeacon Authorization header koyamadığı için token
@@ -947,9 +946,10 @@ export default function RealtimeInterview() {
         REALTIME_PLATFORM_CEILING_SECONDS,
         sessionRes.data.safe_limit_seconds || REALTIME_PLATFORM_CEILING_SECONDS
       );
-      // FAZ D: mimik kareleri mülakatın planlanan süresine eşit dağılsın (aralik = süre/24, alt sınır 30 sn).
+      // GÖREV 3.4 — kareler mülakat süresine yayılsın; aralık = süre/32 (24 değil), alt sınır 20 sn.
+      // Böylece mülakat hedeften kısa bitse bile ~24 kare toplanır (havuz doğrulama seçimine yeter).
       if (sessionRes.data.target_seconds) {
-        setMimicIntervalMs(Math.max(30, Math.round(sessionRes.data.target_seconds / 24)) * 1000);
+        setMimicIntervalMs(Math.max(20, Math.round(sessionRes.data.target_seconds / 32)) * 1000);
       }
       logDebug(`Ephemeral key alındı. Model: ${model}. Key uzunluğu: ${ephemeralKey ? ephemeralKey.length : 0}`);
       if (!ephemeralKey) logDebug("⚠️ UYARI: client_secret boş geldi — backend session yanıtını kontrol et.");

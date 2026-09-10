@@ -58,7 +58,13 @@ export default function Interview() {
   const token = localStorage.getItem("candidate_token");
 
   // ---- Adım kontrolü: camera -> cv -> interview ----
-  const [step, setStep] = useState("camera"); // camera | cv | interview
+  // GÖREV 3.1 — Level 1 yazışmalı mülakattır (kamera yok); kamera adımını baştan atla.
+  const [step, setStep] = useState(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem("candidate_info") || "{}");
+      return (p.level || 1) < 2 ? "cv" : "camera";
+    } catch (e) { return "camera"; }
+  }); // camera | cv | interview
   const [candidate, setCandidate] = useState(null);
 
   // ---- Kamera ----
@@ -177,6 +183,8 @@ export default function Interview() {
         const parsed = JSON.parse(info);
         setCandidate(parsed);
         if (parsed && parsed.level >= 2) setAutoSpeak(true);
+        // GÖREV 3.1 — Level 1 YAZIŞMALI mülakattır: kamera yok, kare yok. Kamera adımını atla.
+        if (parsed && (parsed.level || 1) < 2) setStep("cv");
       } catch (e) { /* ignore */ }
     }
     return () => {
@@ -321,13 +329,15 @@ export default function Interview() {
 
   useEffect(() => {
     if (step !== "interview" || starting || finished) return;
+    if ((candidate?.level || 1) < 2) return;   // GÖREV 3.1 — L1'de kamera/kare yok
     if (introText && !introConfirmed) return;
     const id = setInterval(() => { captureMimicFrame(); }, mimicIntervalMs);
     return () => clearInterval(id);
-  }, [step, starting, finished, introText, introConfirmed, captureMimicFrame, mimicIntervalMs]);
+  }, [step, starting, finished, introText, introConfirmed, captureMimicFrame, mimicIntervalMs, candidate]);
 
   useEffect(() => {
     if (step !== "interview" || starting || finished || totalDurationRef.current <= 0) return;
+    if ((candidate?.level || 1) < 2) return;   // GÖREV 3.1 — L1'de doğrulama karesi yok
     const elapsedRatio = (totalDurationRef.current - totalSecondsLeft) / totalDurationRef.current;
     const checkpoints = [0.02, 0.15, 0.35, 0.60];
     checkpoints.forEach((ratio, idx) => {
@@ -336,7 +346,7 @@ export default function Interview() {
         ensureSnapshot(`time_${idx + 1}`);
       }
     });
-  }, [totalSecondsLeft, step, starting, finished, ensureSnapshot]);
+  }, [totalSecondsLeft, step, starting, finished, ensureSnapshot, candidate]);
 
 
   const uploadCV = async () => {
@@ -869,8 +879,8 @@ export default function Interview() {
               ? "Bu mülakat seviyesinde CV yüklemeden devam edilemez. Yüklediğiniz CV, sorularımızın deneyiminize göre şekillenmesi için kullanılır. (PDF veya Word)"
               : "Opsiyoneldir. Yüklerseniz mülakat sorularımız deneyiminize göre kişiselleştirilir. (PDF veya Word)"}
           </div>
-          <div style={{ background: "#ecfdf5", border: "1px solid #22c55e", color: "#166534", borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12, fontWeight: 600 }}>✅ Kamera izni alındı. Aşağıdaki ön izleme canlıdır.</div>
-          <video ref={attachVideoRef} autoPlay muted playsInline style={{ width: 140, maxHeight: 100, objectFit: "cover", borderRadius: 8, marginBottom: 14, transform: "scaleX(-1)", border: "2px solid #22c55e" }} />
+          {cvMandatory && <div style={{ background: "#ecfdf5", border: "1px solid #22c55e", color: "#166534", borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12, fontWeight: 600 }}>✅ Kamera izni alındı. Aşağıdaki ön izleme canlıdır.</div>}
+          {cvMandatory && <video ref={attachVideoRef} autoPlay muted playsInline style={{ width: 140, maxHeight: 100, objectFit: "cover", borderRadius: 8, marginBottom: 14, transform: "scaleX(-1)", border: "2px solid #22c55e" }} />}
           <input type="file" accept=".pdf,.doc,.docx,.pdf" onChange={e => setCvFile(e.target.files[0] || null)} style={{ marginBottom: 16, width: "100%" }} />
           {cvError && <div style={{ color: colors.red, fontSize: 12, marginBottom: 12 }}>{cvError}</div>}
           <div style={{ display: "flex", gap: 10 }}>
@@ -999,8 +1009,9 @@ export default function Interview() {
         )}
 
         <div className="interview-layout" style={{ display: "flex", gap: 16 }}>
+          {/* GÖREV 3.1 — L1 yazışmalı mülakatta kamera sütunu yok; yalnız soru sayacı gösterilir */}
           <div className="interview-camera-col" style={{ width: 100, flexShrink: 0 }}>
-            <CameraPreview attachVideoRef={attachVideoRef} />
+            {(candidate?.level || 1) >= 2 && <CameraPreview attachVideoRef={attachVideoRef} />}
             {!finished && <QuestionTimer secondsLeft={questionSecondsLeft} />}
             {!finished && timeoutNudge && (
               <div style={{ background: "#fef9e7", border: "1px solid #f59e0b", color: "#92400e", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 600, textAlign: "center", marginTop: 8 }}>
