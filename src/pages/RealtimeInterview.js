@@ -8,11 +8,23 @@ const formatTime = (s) => {
   return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, "0")}`;
 };
 
-// Faz D1: OpenAI Realtime oturumları platform tarafından en fazla 60 dk sürüyor. L3 "derin" hedefi
-// (LEVEL_CONFIG[3] × DEPTH_TIER_CONFIG["derin"] = 30×1.6 = 48 dk) adaptif ve sabit tavansız olduğu
-// için pratikte bu sınıra yaklaşabilir. 55 dk'da (5 dk pay) AI'a kapanışı tamamlaması söylenir;
-// yalnızca Level 3'te devreye girer, L1/L2 hiç etkilenmez.
-const REALTIME_L3_SAFE_LIMIT_SECONDS = 55 * 60;
+// OpenAI Realtime oturumları platform tarafından en fazla 60 dk sürüyor — bu MUTLAK üst tavan
+// (5 dk pay). MADDE 3: gerçek güvenli sınır artık seviye/derinliğe göre backend'den gelir
+// (safe_limit_seconds = hedef süre × 1.5, 12–55 dk arası) ve L2 + L3 için geçerli. Sınıra
+// ulaşınca AI'a doğal kapanış talimatı verilir; end_interview gelmezse gecikmeli zorla bitiş.
+const REALTIME_PLATFORM_CEILING_SECONDS = 55 * 60;
+
+// MADDE 1 — mülakatçının TEK yanıtta üretebileceği çıktı (metin+ses) token tavanı. Normal/örnekli
+// tur ~700-2000 token; 4096 ~2-4x üstünde, kesilme riski yok. Yalnızca anormal uzun monologları
+// tavanlar. session.update ile Realtime session'a uygulanır (backend session config'iyle tutarlı).
+const REALTIME_MAX_RESPONSE_TOKENS = 4096;
+
+// dc.onopen içindeki "session.update güvenlik ağı" bu sabiti kullanıyor ama HİÇBİR YERDE
+// TANIMLI DEĞİLDİ → her oturumda o blokta ReferenceError atıp sonrasındaki heartbeat
+// (setInterval → syncProgress) kurulumunu sessizce düşürüyordu (CI=false build no-undef'i
+// yutuyor). Backend varsayılanıyla (OPENAI_REALTIME_VOICE = "marin") hizalandı; asıl ses zaten
+// backend session config'inde ayarlanıyor, bu yalnızca güvenlik ağı re-send'i.
+const REALTIME_VOICE = "marin";
 
 // Bağlantı hatasında otomatik yeniden deneme adımları (BÖLÜM 1.5). Yalnızca "retryable"
 // sınıflarda (yoğunluk / geçici sunucu / ağ) uygulanır; kota / yetki / mikrofon hatasında ASLA.
@@ -224,7 +236,8 @@ export default function RealtimeInterview() {
   const remotePlaybackGainRef = useRef(null);
   const closingFallbackTimerRef = useRef(null);
   const levelRafRef = useRef(null);
-  const hardCloseTriggeredRef = useRef(false); // Faz D1: 55 dk güvenli kapanışı bir kez tetikle
+  const hardCloseTriggeredRef = useRef(false); // MADDE 3: güvenli kapanışı bir kez tetikle
+  const safeLimitSecondsRef = useRef(REALTIME_PLATFORM_CEILING_SECONDS); // MADDE 3: backend'den gelen seviye/derinlik bazlı sınır
   const realtimeEventsBufferRef = useRef([]); // Faz D1: sync/report ile backend'e taşınacak ham olaylar
   const realtimeUsageRef = useRef({
     input_tokens: 0,
@@ -275,12 +288,13 @@ export default function RealtimeInterview() {
       const value = Math.max(0, (Date.now() - startTsRef.current) / 1000);
       elapsedRef.current = value;
       setElapsed(Math.floor(value));
-      // Faz D1 GÜVENLİ KAPANIŞ — SADECE Level 3: platform 60 dk sınırına yaklaşılınca AI'a
-      // kapanışı tamamlamasını söyleriz; end_interview çağırmazsa (bağlantı/gecikme riski) kısa
-      // bir bekleme sonrası zorla rapor üretilir. L1/L2 bu koşula hiç girmez, hiçbir etkisi yok.
-      if (candidate?.level === 3 && value >= REALTIME_L3_SAFE_LIMIT_SECONDS && !hardCloseTriggeredRef.current && !finishedRef.current) {
+      // MADDE 3 GÜVENLİ KAPANIŞ — L2 + L3: seviye/derinlik bazlı üst süre sınırına (backend'den
+      // gelen safe_limit_seconds) ulaşılınca AI'a kapanışı tamamlamasını söyleriz; end_interview
+      // çağırmazsa (bağlantı/gecikme riski) kısa bir bekleme sonrası zorla rapor üretilir.
+      // L1 sesli akışı kullanmaz — bu koşula hiç girmez.
+      if ((candidate?.level === 2 || candidate?.level === 3) && value >= safeLimitSecondsRef.current && !hardCloseTriggeredRef.current && !finishedRef.current) {
         hardCloseTriggeredRef.current = true;
-        logDebug(`⏱️ Güvenli kapanış tetiklendi — ${Math.floor(REALTIME_L3_SAFE_LIMIT_SECONDS / 60)} dk sınırına ulaşıldı (platform sınırı 60 dk).`);
+        logDebug(`⏱️ Güvenli kapanış tetiklendi — ${Math.floor(safeLimitSecondsRef.current / 60)} dk sınırına ulaşıldı (L${candidate?.level}, platform tavanı 60 dk).`);
         try {
           if (dcRef.current?.readyState === "open") {
             dcRef.current.send(JSON.stringify({
@@ -928,6 +942,11 @@ export default function RealtimeInterview() {
       coverageThresholdRef.current = sessionRes.data.coverage_threshold || 60;
       criteriaNamesRef.current = sessionRes.data.criteria_names || [];
       pricingRef.current = sessionRes.data.pricing || {};
+      // MADDE 3: seviye/derinlik bazlı üst süre sınırı (backend hesaplar); platform tavanıyla sınırla.
+      safeLimitSecondsRef.current = Math.min(
+        REALTIME_PLATFORM_CEILING_SECONDS,
+        sessionRes.data.safe_limit_seconds || REALTIME_PLATFORM_CEILING_SECONDS
+      );
       // FAZ D: mimik kareleri mülakatın planlanan süresine eşit dağılsın (aralik = süre/24, alt sınır 30 sn).
       if (sessionRes.data.target_seconds) {
         setMimicIntervalMs(Math.max(30, Math.round(sessionRes.data.target_seconds / 24)) * 1000);
@@ -1042,6 +1061,9 @@ export default function RealtimeInterview() {
           type: "session.update",
           session: {
             type: "realtime",
+            // MADDE 1: yanıt başına çıktı token tavanı (backend session config'iyle tutarlı) —
+            // anormal uzun monologları keser, normal/örnekli tur çok altında kalır.
+            max_response_output_tokens: REALTIME_MAX_RESPONSE_TOKENS,
             audio: {
               output: { voice: REALTIME_VOICE },
               input: {
