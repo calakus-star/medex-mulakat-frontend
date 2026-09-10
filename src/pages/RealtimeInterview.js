@@ -41,6 +41,11 @@ const _HALLUCINATION_PHRASES = new Set([
   "mhm", "uh-huh", "okay", "ok", "o.k.", "switch", "switch.", "uh", "um", "hmm", "hm",
   "yeah", "yep", "yes", "see you", "see you later", "thanks for watching", "please subscribe",
   "amara.org", "altyazı m.k.", "i'm sorry", "sorry", "the end", "okay.", "so", "right",
+  // GÖREV 4.3 — backend _HALLUCINATION_PHRASES ile senkron
+  "i'll see you", "i'll see you.", "i will see you", "see you next time", "see you soon",
+  "please do that", "please do that.", "please do", "you're welcome", "thank you for watching",
+  "subscribe", "like and subscribe", "don't forget to subscribe", "have a nice day", "take care",
+  "good luck", "here we go", "let's go", "come on",
 ]);
 function isLikelyHallucination(text, sessionLang) {
   const raw = (text || "").trim();
