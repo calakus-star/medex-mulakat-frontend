@@ -6,7 +6,9 @@ import { API_URL } from "../App";
 
 const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
 const STATUS_TONE = { pending: "yellow", completed: "green" };
-const REC_TONE = { "İşe Al": "green", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
+// Rapor motoru yeniden düzenleme (2026-09): kanonik orta-bant etiketi "Değerlendir" oldu;
+// eski kayıtlarda "Değerlendirmeye Al" saklı olabileceği için iki anahtar da tutulur.
+const REC_TONE = { "İşe Al": "green", "Değerlendir": "yellow", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
 
 // Teşebbüs durumu (backend derive_attempt_status ile TEK KAYNAK) — sadece renk eşlemesi burada.
 const ATTEMPT_TONE = {

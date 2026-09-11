@@ -11,7 +11,10 @@ import ErrorLogPanel from "./ErrorLogPanel";
 
 const STATUS_TONE = { pending: "yellow", completed: "green" };
 const STATUS_LABELS = { pending: "Bekliyor", completed: "Tamamlandı" };
-const REC_TONE = { "İşe Al": "green", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
+// Rapor motoru yeniden düzenleme (2026-09): kanonik orta-bant etiketi "Değerlendir" oldu
+// ("Değerlendirmeye Al" başlık hücresinde kelime ortasından bölünüyordu). Eski kayıtlarda
+// hâlâ "Değerlendirmeye Al" saklı olabileceği için iki anahtar da tutulur (geriye dönük uyum).
+const REC_TONE = { "İşe Al": "green", "Değerlendir": "yellow", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
 
 // backend/LEVELS.md ile senkron tutulmalı — level seçerken admine kısa bir yön verir.
 const LEVEL_INFO = {
@@ -27,7 +30,7 @@ const normalizeRecommendation = (score, recommendation) => {
   const n = Number(score);
   if (Number.isNaN(n)) return recommendation || "-";
   if (n < 40) return "Reddet";
-  if (n < 80) return "Değerlendirmeye Al";
+  if (n < 80) return "Değerlendir";
   return "İşe Al";
 };
 
@@ -40,7 +43,7 @@ const nextAction = (c, rec) => {
   if (c.terminated_reason) return { text: "İhlal raporunu incele", tone: "red" };
   if (rec === "İşe Al") return { text: "İşe alım kararını onayla", tone: "green" };
   if (rec === "Reddet") return { text: "Red kararını onayla", tone: "red" };
-  if (rec === "Değerlendirmeye Al") return { text: "Raporu incele", tone: "yellow" };
+  if (rec === "Değerlendir" || rec === "Değerlendirmeye Al") return { text: "Raporu incele", tone: "yellow" };
   return { text: "Detayları görüntüle", tone: "neutral" };
 };
 
