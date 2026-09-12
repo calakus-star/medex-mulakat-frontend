@@ -425,12 +425,19 @@ export default function AdminDashboard() {
                     </td>
                     <td style={{ padding: "10px 12px", fontWeight: 700, color: colors.ink }}>
                       {formatScore(c.score)}
-                      {c.score_profile != null && (
-                        <div style={{ fontSize: 10.5, fontWeight: 600, color: colors.mutedLight, marginTop: 2 }}
-                             title={`PUAN 1 (pozisyon): ${c.score_position ?? "-"} · PUAN 2 (profil): ${c.score_profile}`}>
-                          P{c.score_position ?? "-"} · K{c.score_profile}
-                        </div>
-                      )}
+                      {c.score_profile != null && (() => {
+                        const hasSecond = c.reviewer_score_position != null || c.reviewer_score_profile != null;
+                        // İş emri GÖREV 8 — genel puan dört puanın (varsa) eşit ağırlıklı ortalaması;
+                        // ikinci değerlendirici yoksa yalnız ikisi (birincil) gösterilir.
+                        const title = `Genel puan, mevcut puanların ortalamasıdır. Birinci değerlendirici — Pozisyon: ${c.score_position ?? "-"} · Profil: ${c.score_profile}`
+                          + (hasSecond ? ` · İkinci değerlendirici — Pozisyon: ${c.reviewer_score_position ?? "-"} · Profil: ${c.reviewer_score_profile ?? "-"}` : "");
+                        return (
+                          <div style={{ fontSize: 10.5, fontWeight: 600, color: colors.mutedLight, marginTop: 2 }} title={title}>
+                            1: P{c.score_position ?? "-"}·K{c.score_profile}
+                            {hasSecond && <> · 2: P{c.reviewer_score_position ?? "-"}·K{c.reviewer_score_profile ?? "-"}</>}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td style={{ padding: "10px 12px" }}>
                       {rec !== "-" ? <Badge tone={REC_TONE[rec] || "neutral"}>{rec}</Badge> : "-"}

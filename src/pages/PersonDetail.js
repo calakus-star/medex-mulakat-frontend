@@ -515,11 +515,21 @@ export default function PersonDetail() {
                       <Badge tone={ATTEMPT_TONE[a.attempt_status] || "yellow"}>{a.attempt_status_label || STATUS_LABELS[a.status] || a.status}</Badge>
                       {a.processing_status === "processing" && <Badge tone="yellow">⏳ Rapor Hazırlanıyor</Badge>}
                       {a.processing_status === "failed" && <Badge tone="red" title={a.processing_error || ""}>⚠ Rapor Hatası</Badge>}
-                      {a.score !== null && a.score !== undefined && (
-                        <span style={{ fontWeight: 700, color: colors.ink, fontSize: 13 }} title={a.score_profile != null ? `PUAN 1 (pozisyon): ${a.score_position ?? "-"} · PUAN 2 (profil): ${a.score_profile}` : ""}>
-                          {a.score}/100{a.score_profile != null ? ` (P${a.score_position ?? "-"}·K${a.score_profile})` : ""}
-                        </span>
-                      )}
+                      {a.score !== null && a.score !== undefined && (() => {
+                        const hasSecond = a.reviewer_score_position != null || a.reviewer_score_profile != null;
+                        const title = a.score_profile != null
+                          ? `Genel puan, mevcut puanların ortalamasıdır. Birinci değerlendirici — Pozisyon: ${a.score_position ?? "-"} · Profil: ${a.score_profile}`
+                            + (hasSecond ? ` · İkinci değerlendirici — Pozisyon: ${a.reviewer_score_position ?? "-"} · Profil: ${a.reviewer_score_profile ?? "-"}` : "")
+                          : "";
+                        return (
+                          <span style={{ fontWeight: 700, color: colors.ink, fontSize: 13 }} title={title}>
+                            {a.score}/100
+                            {a.score_profile != null && (
+                              <> (1: P{a.score_position ?? "-"}·K{a.score_profile}{hasSecond && <> · 2: P{a.reviewer_score_position ?? "-"}·K{a.reviewer_score_profile ?? "-"}</>})</>
+                            )}
+                          </span>
+                        );
+                      })()}
                       {a.recommendation && <Badge tone={REC_TONE[a.recommendation] || "neutral"}>{a.recommendation}</Badge>}
                       {a.reapply_allowed ? <Badge tone="green">Tekrar başvuru açık</Badge> : null}
                     </div>
@@ -732,15 +742,29 @@ export default function PersonDetail() {
                 <>
                   <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
                     <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.score_position ?? "-"}</div>
-                    <div style={{ fontSize: 11, color: colors.muted }}>PUAN 1 · Pozisyon</div>
+                    <div style={{ fontSize: 11, color: colors.muted }}>Birinci · Pozisyon</div>
                   </div>
                   <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
                     <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.score_profile}</div>
-                    <div style={{ fontSize: 11, color: colors.muted }}>PUAN 2 · Profil</div>
+                    <div style={{ fontSize: 11, color: colors.muted }}>Birinci · Profil</div>
                   </div>
+                  {/* İş emri GÖREV 8 — ikinci değerlendirici çalıştıysa onun da iki puanı gösterilir;
+                      çalışmadıysa bu iki kutu hiç basılmaz (yalnız birincilin iki puanı görünür). */}
+                  {(selectedReport.reviewer_score_position != null || selectedReport.reviewer_score_profile != null) && (
+                    <>
+                      <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.reviewer_score_position ?? "-"}</div>
+                        <div style={{ fontSize: 11, color: colors.muted }}>İkinci · Pozisyon</div>
+                      </div>
+                      <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.reviewer_score_profile ?? "-"}</div>
+                        <div style={{ fontSize: 11, color: colors.muted }}>İkinci · Profil</div>
+                      </div>
+                    </>
+                  )}
                   <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
                     <div style={{ fontSize: 26, fontWeight: 700, color: colors.ink }}>{selectedReport.score ?? "-"}</div>
-                    <div style={{ fontSize: 11, color: colors.muted }}>Ortalama / 100</div>
+                    <div style={{ fontSize: 11, color: colors.muted }} title="Genel Puan, yukarıdaki mevcut puanların eşit ağırlıklı ortalamasıdır.">Genel Puan (ortalama) / 100</div>
                   </div>
                 </>
               ) : (
@@ -751,7 +775,7 @@ export default function PersonDetail() {
               )}
               <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
                 <Badge tone={REC_TONE[selectedReport.recommendation] || "neutral"}>{selectedReport.recommendation || "-"}</Badge>
-                <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Öneri {selectedReport.score_profile != null ? "(PUAN 1'e göre)" : ""}</div>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Öneri {selectedReport.score_profile != null ? "(Genel Puan'a göre)" : ""}</div>
               </div>
             </div>
             {/* FAZ D: ortak rapor muhalif denetçisi çalışmadıysa görünür uyarı — sadece admin tarafı. */}
