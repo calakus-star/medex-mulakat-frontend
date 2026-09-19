@@ -760,6 +760,18 @@ export default function PersonDetail() {
                         <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.reviewer_score_profile ?? "-"}</div>
                         <div style={{ fontSize: 11, color: colors.muted }}>İkinci · Profil</div>
                       </div>
+                      {/* İŞ EMRİ — NİHAİ RAPOR TUTARLILIĞI / madde 3: rapor metninde ("Öneri Gerekçesi")
+                          zaten görünen Nihai Pozisyon/Profil Puanı, DB'nin canonical final_score_position/
+                          final_score_profile alanlarından AYNEN (yeniden hesaplanmadan) burada da gösterilir —
+                          Birinci/İkinci ile Nihai'nin aynı ekranda tutarlı görünmesi için. */}
+                      <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.final_score_position ?? "-"}</div>
+                        <div style={{ fontSize: 11, color: colors.muted }}>Nihai · Pozisyon</div>
+                      </div>
+                      <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: colors.ink }}>{selectedReport.final_score_profile ?? "-"}</div>
+                        <div style={{ fontSize: 11, color: colors.muted }}>Nihai · Profil</div>
+                      </div>
                     </>
                   )}
                   <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>

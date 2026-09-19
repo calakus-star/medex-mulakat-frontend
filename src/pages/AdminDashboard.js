@@ -25,14 +25,14 @@ const LEVEL_INFO = {
 
 const formatScore = (value) => (value === null || value === undefined || value === "" ? "-" : `${value}/100`);
 
-const normalizeRecommendation = (score, recommendation) => {
-  if (score === null || score === undefined || score === "") return recommendation || "-";
-  const n = Number(score);
-  if (Number.isNaN(n)) return recommendation || "-";
-  if (n < 40) return "Reddet";
-  if (n < 80) return "Değerlendir";
-  return "İşe Al";
-};
+// İŞ EMRİ — NİHAİ RAPOR TUTARLILIĞI / madde 3: Admin panel kendi başına nihai öneriyi
+// yeniden HESAPLAMAZ — backend'in tek karar kaynağından (interviews.recommendation,
+// normalize_recommendation() ile üretilir) gelen canonical değer AYNEN kullanılır. Bu fonksiyon
+// eskiden score'dan kendi eşikleriyle (<40/<80) recommendation'ı YENİDEN türetiyordu — backend'le
+// bugün aynı eşikleri kullansa da, bu bağımsız bir ikinci "karar kaynağı" oluşturuyordu (ör.
+// score dolu ama recommendation="Değerlendirilemedi" olan bir satırda bu üzerine yazılırdı).
+// Yalnız DB'de recommendation hiç yoksa (eski/eksik kayıt) "-" gösterilir, uydurulmaz.
+const normalizeRecommendation = (score, recommendation) => recommendation || "-";
 
 const nextAction = (c, rec) => {
   if (c.status !== "completed") {
