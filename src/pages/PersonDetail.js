@@ -582,7 +582,7 @@ export default function PersonDetail() {
                 </div>
 
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
-                  {a.status === "completed" && (
+                  {(a.status === "completed" || a.processing_status === "completed") && (
                     <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => viewReport(a.candidate_id, a.level)}>Rapor</Button>
                   )}
                   {a.status !== "completed" && (a.processing_status === "processing" || a.processing_status === "failed") && (

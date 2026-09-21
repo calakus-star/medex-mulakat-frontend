@@ -35,7 +35,7 @@ const formatScore = (value) => (value === null || value === undefined || value =
 const normalizeRecommendation = (score, recommendation) => recommendation || "-";
 
 const nextAction = (c, rec) => {
-  if (c.status !== "completed") {
+  if (c.status !== "completed" && c.processing_status !== "completed") {
     if (c.processing_status === "processing") return { text: "Rapor hazırlanıyor, bekleyin", tone: "yellow" };
     if (c.processing_status === "failed") return { text: "Rapor hatası — tekrar deneyin", tone: "red" };
     return { text: "Adayın başlamasını bekleyin", tone: "yellow" };
