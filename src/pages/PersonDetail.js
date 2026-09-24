@@ -10,6 +10,12 @@ const STATUS_TONE = { pending: "yellow", completed: "green" };
 // eski kayıtlarda "Değerlendirmeye Al" saklı olabileceği için iki anahtar da tutulur.
 const REC_TONE = { "İşe Al": "green", "Değerlendir": "yellow", "Değerlendirmeye Al": "yellow", "Reddet": "red" };
 
+// İş emri — MÜLAKAT LEVEL VE DERİNLİK BİLGİSİNİ GÖSTER: mevcut Derinlik Select'inde (aşağıda)
+// zaten kullanılan aynı üç etiket — yeni bir derinlik sınıfı/isim UYDURULMADI.
+const DEPTH_LABELS = { kisa: "Kısa", standart: "Standart", derin: "Derin" };
+const depthLabel = (v) => (v ? (DEPTH_LABELS[String(v).toLowerCase()] || "—") : "—");
+const levelLabel = (v) => ([1, 2, 3].includes(Number(v)) ? `L${v}` : "—");
+
 // Teşebbüs durumu (backend derive_attempt_status ile TEK KAYNAK) — sadece renk eşlemesi burada.
 const ATTEMPT_TONE = {
   sent: "neutral",
@@ -507,7 +513,7 @@ export default function PersonDetail() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
                   <div>
                     <div style={{ fontWeight: 600, color: colors.ink }}>
-                      {a.position} · Level {a.level}
+                      {a.position} · {levelLabel(a.interview_level ?? a.level)} · {depthLabel(a.interview_depth_tier ?? a.depth_tier)}
                       {a.is_archived ? <span style={{ marginLeft: 8, fontSize: 11, color: colors.mutedLight }}>(eski başvuru)</span> : null}
                     </div>
                     <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>Davet oluşturuldu: {formatDateTR(a.created_at)}</div>
@@ -699,6 +705,12 @@ export default function PersonDetail() {
                 <div style={{ fontSize: 17, fontWeight: 700, color: colors.ink }}>Mülakat Raporu</div>
                 <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
                   {selectedReport.name} · {selectedReport.email || "E-posta yok"} · {selectedReport.phone || "Telefon yok"}
+                </div>
+                {/* İş emri — MÜLAKAT LEVEL VE DERİNLİK BİLGİSİNİ GÖSTER: selectedReport, /api/admin/interviews
+                    (get_interview) yanıtıdır — level/depth_tier BU spesifik mülakat satırından (interviews.*)
+                    gelir, adayın güncel/genel alanından değil. */}
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+                  {levelLabel(selectedReport.level)} · Derinlik: {depthLabel(selectedReport.depth_tier)}
                 </div>
                 {(() => {
                   // Form beyanı (candidates.education/university/department/experience_years) ile
