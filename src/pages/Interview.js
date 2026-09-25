@@ -198,11 +198,15 @@ export default function Interview() {
   }, [messages, loading]);
 
   // ===== Kamera izni =====
+  // İş emri (GÖRÜNTÜ VE SES GÖZLEMİ ZENGİLEŞTİRME) madde 1/34 — kamera izni/cihaz eksikliği
+  // ARTIK mülakatı BLOKLAMAZ; aday isterse "Kamera Olmadan Devam Et" ile geçebilir.
+  const [cameraSkipReason, setCameraSkipReason] = useState(null);
   const requestCamera = async () => {
     setCameraError("");
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError("Tarayıcınız kamera erişimini desteklemiyor. Lütfen güncel bir Chrome, Edge veya Safari kullanın ve sitenin https (güvenli) bağlantı ile açıldığından emin olun.");
+      setCameraSkipReason("no_camera");
       return;
     }
 
@@ -211,6 +215,7 @@ export default function Interview() {
       // Track'lerin gerçekten canlı olduğunu doğrula
       if (!stream || stream.getVideoTracks().length === 0) {
         setCameraError("Kamera akışı alınamadı. Lütfen kameranızın başka bir uygulama tarafından kullanılmadığından emin olup tekrar deneyin.");
+        setCameraSkipReason("no_stream");
         return;
       }
       streamRef.current = stream;
@@ -218,12 +223,32 @@ export default function Interview() {
     } catch (e) {
       if (e && e.name === "NotFoundError") {
         setCameraError("Cihazınızda kamera bulunamadı. Mülakata kamera bulunan bir cihazdan giriş yapmanız gerekmektedir.");
+        setCameraSkipReason("no_camera");
       } else if (e && e.name === "NotAllowedError") {
         setCameraError("Kamera izni reddedildi. Mülakata başlamak için tarayıcı ayarlarından kamera iznini vermeniz gerekmektedir.");
+        setCameraSkipReason("permission_denied");
       } else {
         setCameraError("Kamera izni verilemedi. Lütfen tarayıcı ayarlarınızı kontrol edip tekrar deneyin.");
+        setCameraSkipReason("permission_denied");
       }
     }
+  };
+
+  const skipCameraEntirely = async () => {
+    try {
+      const candidateId = candidate ? candidate.id : null;
+      if (candidateId) {
+        await axios.post(`${API_URL}/api/interview/camera-validation`, {
+          candidate_id: candidateId, level: candidate ? candidate.level : null,
+          status: "unverified", reason: cameraSkipReason || "no_camera", person_count: null,
+          basic_video_ok: false, detector_available: null, attempts: 0,
+          client_timestamp: new Date().toISOString(), snapshot_id: null,
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      }
+    } catch (e) {
+      // Audit kaydı başarısız olsa bile mülakat devam eder — bu kapı bir engel değildir.
+    }
+    setStep("cv");
   };
 
   // Yedek güvenlik: callback ref ana mekanizma olsa da, bazı durumlarda
@@ -269,7 +294,8 @@ export default function Interview() {
       if (!candidateId) return false;
 
       const res = await axios.post(`${API_URL}/api/interview/snapshot`, {
-        candidate_id: candidateId, image_base64: dataUrl, reason
+        candidate_id: candidateId, image_base64: dataUrl, reason,
+        level: stateRef.current.candidate ? stateRef.current.candidate.level : null,
       }, { headers: { Authorization: `Bearer ${token}` } });
       if (typeof res.data?.count === "number") savedSnapshotCountRef.current = res.data.count;
       else savedSnapshotCountRef.current = Math.min(4, savedSnapshotCountRef.current + 1);
@@ -861,6 +887,12 @@ export default function Interview() {
           <button onClick={requestCamera} style={{ background: colors.navy, color: "#fff", border: "none", borderRadius: 8, padding: "14px 32px", fontSize: 16, fontWeight: 600, cursor: "pointer", width: "100%" }}>
             Kameramı Etkinleştir ve Başla
           </button>
+          {/* İş emri madde 1/34 — kamera izni/cihaz yoksa mülakat yine de devam edebilmelidir. */}
+          {cameraError && (
+            <button onClick={skipCameraEntirely} style={{ background: "none", color: colors.slate, border: "none", padding: "10px", fontSize: 13, cursor: "pointer", marginTop: 8, textDecoration: "underline", width: "100%" }}>
+              Kamera Olmadan Devam Et
+            </button>
+          )}
         </div>
       </div>
     );
@@ -875,7 +907,8 @@ export default function Interview() {
         let snapshotId = null;
         if (candidateId && result.frameDataUrl) {
           const res = await axios.post(`${API_URL}/api/interview/snapshot`, {
-            candidate_id: candidateId, image_base64: result.frameDataUrl, reason: "camera_validation"
+            candidate_id: candidateId, image_base64: result.frameDataUrl, reason: "camera_validation",
+            level: candidate ? candidate.level : null,
           }, { headers: { Authorization: `Bearer ${token}` } });
           snapshotId = res.data?.id ?? null;
         }

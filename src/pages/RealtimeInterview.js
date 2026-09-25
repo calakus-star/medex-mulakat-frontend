@@ -324,10 +324,14 @@ export default function RealtimeInterview() {
   }, [step, finished, candidate]);
 
   // ===== Kamera izni =====
+  // İş emri (GÖRÜNTÜ VE SES GÖZLEMİ ZENGİLEŞTİRME) madde 1/34 — kamera izni/cihaz eksikliği
+  // ARTIK mülakatı BLOKLAMAZ; aday isterse "Kamera Olmadan Devam Et" ile geçebilir.
+  const [cameraSkipReason, setCameraSkipReason] = useState(null);
   const requestCamera = async () => {
     setCameraError("");
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError("Tarayıcınız kamera erişimini desteklemiyor.");
+      setCameraSkipReason("no_camera");
       return;
     }
     try {
@@ -336,7 +340,25 @@ export default function RealtimeInterview() {
       setStep("camera_check");
     } catch (e) {
       setCameraError("Kamera izni alınamadı. Lütfen tarayıcı ayarlarından izin verip tekrar deneyin.");
+      setCameraSkipReason(e && e.name === "NotFoundError" ? "no_camera" : "permission_denied");
     }
+  };
+
+  const skipCameraEntirely = async () => {
+    try {
+      const candidateId = candidate ? candidate.id : null;
+      if (candidateId) {
+        await axios.post(`${API_URL}/api/interview/camera-validation`, {
+          candidate_id: candidateId, level: candidate ? candidate.level : null,
+          status: "unverified", reason: cameraSkipReason || "no_camera", person_count: null,
+          basic_video_ok: false, detector_available: null, attempts: 0,
+          client_timestamp: new Date().toISOString(), snapshot_id: null,
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      }
+    } catch (e) {
+      // Audit kaydı başarısız olsa bile mülakat devam eder — bu kapı bir engel değildir.
+    }
+    setStep("cv");
   };
 
   useEffect(() => {
@@ -639,7 +661,8 @@ export default function RealtimeInterview() {
       if (!candidateId) { logDebug(`⚠️ Kare yakalama atlandı (${reason}): candidate_id yok.`); return false; }
 
       const res = await axios.post(`${API_URL}/api/interview/snapshot`, {
-        candidate_id: candidateId, image_base64: dataUrl, reason
+        candidate_id: candidateId, image_base64: dataUrl, reason,
+        level: candidate ? candidate.level : null,
       }, { headers: { Authorization: `Bearer ${token}` } });
       if (typeof res.data?.count === "number") savedSnapshotCountRef.current = res.data.count;
       else savedSnapshotCountRef.current = Math.min(4, savedSnapshotCountRef.current + 1);
@@ -1390,6 +1413,12 @@ export default function RealtimeInterview() {
           <button onClick={requestCamera} style={{ width: "100%", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
             Kameramı Etkinleştir
           </button>
+          {/* İş emri madde 1/34 — kamera izni/cihaz yoksa mülakat yine de devam edebilmelidir. */}
+          {cameraError && (
+            <button onClick={skipCameraEntirely} style={{ width: "100%", background: "none", color: "#64748b", border: "none", padding: "10px", fontSize: 13, cursor: "pointer", marginTop: 8, textDecoration: "underline" }}>
+              Kamera Olmadan Devam Et
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1404,7 +1433,8 @@ export default function RealtimeInterview() {
         let snapshotId = null;
         if (candidateId && result.frameDataUrl) {
           const res = await axios.post(`${API_URL}/api/interview/snapshot`, {
-            candidate_id: candidateId, image_base64: result.frameDataUrl, reason: "camera_validation"
+            candidate_id: candidateId, image_base64: result.frameDataUrl, reason: "camera_validation",
+            level: candidate ? candidate.level : null,
           }, { headers: { Authorization: `Bearer ${token}` } });
           snapshotId = res.data?.id ?? null;
         }

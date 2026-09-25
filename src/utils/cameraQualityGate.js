@@ -38,13 +38,23 @@ const BLANK_VARIANCE_THRESHOLD = 4; // görüntüde pratik olarak hiç doku/kont
 // anti-spoofing sistemi değildir, adaydan bilinçli hareket İSTENMEZ.
 const FROZEN_DIFF_THRESHOLD = 1.5;
 
-export const MAX_SOFT_ATTEMPTS = 3;
+// İş emri (GÖRÜNTÜ VE SES GÖZLEMİ ZENGİNLEŞTİRME) madde 1/9/35 — kamera kontrolü artık ASLA
+// mülakatı bloklamaz; bu, "kaç kez bozuk sonuç sonra otomatik devam" bounded deneme sayısıdır
+// (eskiden yalnız SOFT FAIL için geçerliydi, HARD durumlar sınırsız manuel retry gerektiriyordu —
+// o davranış KALDIRILDI).
+export const MAX_GATE_ATTEMPTS = 3;
+// Geriye dönük isim (bu modülü import eden başka kod kalmışsa kırılmasın).
+export const MAX_SOFT_ATTEMPTS = MAX_GATE_ATTEMPTS;
+
+// İş emri madde 7 — detector init (WASM/model indirme + oluşturma) süresiz bekletemez.
+const DETECTOR_INIT_TIMEOUT_MS = 10000;
 
 let _detectorPromise = null;
 
-// İş emri madde 4 — detector yüklenemezse (timeout/model yok/WASM desteklenmiyor/WebGL
-// sorunu/init exception) uygulama ÇÖKMEZ; bu fonksiyon reddedilir, çağıran SOFT FAIL olarak
-// ele alır. Başarısız promise cache'lenmez — bir sonraki denemede tekrar yüklenmeye çalışılır.
+// İş emri madde 4/7 — detector yüklenemezse VEYA 10 sn içinde hazır olmazsa (timeout/model yok/
+// WASM desteklenmiyor/WebGL sorunu/init exception/yavaş ağ) uygulama ÇÖKMEZ, mülakatı BEKLETMEZ;
+// bu fonksiyon reddedilir, çağıran teknik-nedenli SOFT FAIL olarak ele alır. Başarısız promise
+// cache'lenmez — bir sonraki denemede tekrar yüklenmeye çalışılır (ama her deneme yine 10 sn'de kesilir).
 function loadFaceDetector() {
   if (!_detectorPromise) {
     _detectorPromise = (async () => {
@@ -57,7 +67,10 @@ function loadFaceDetector() {
     })();
     _detectorPromise.catch(() => { _detectorPromise = null; });
   }
-  return _detectorPromise;
+  const timeout = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error("detector_init_timeout")), DETECTOR_INIT_TIMEOUT_MS);
+  });
+  return Promise.race([_detectorPromise, timeout]);
 }
 
 function grabFrame(video, canvas) {
@@ -183,7 +196,10 @@ export async function runCameraQualityCheck(video) {
   try {
     detector = await loadFaceDetector();
   } catch (e) {
-    return { status: "soft_fail", hard: false, reason: "detector_unavailable", person_count: null,
+    // İş emri madde 7/8 — 10 sn'lik init sınırı aşılırsa özel olarak "detector_timeout" işaretlenir
+    // (aday kuralı ihlal etmedi, teknik bir durumdur); diğer init hataları "detector_unavailable".
+    const _reason = (e && e.message === "detector_init_timeout") ? "detector_timeout" : "detector_unavailable";
+    return { status: "soft_fail", hard: false, reason: _reason, person_count: null,
              basic_video_ok: basicVideoOk, detector_available: false, timestamp, frameDataUrl: lastFrameDataUrl };
   }
 

@@ -728,6 +728,28 @@ export default function PersonDetail() {
                   );
                 })()}
                 {(() => {
+                  // İş emri (GÖRÜNTÜ VE SES GÖZLEMİ ZENGİLEŞTİRME) madde 28 — PDF ile AYNI backend
+                  // seçim fonksiyonu (select_representative_camera_image), aynı candidate+level
+                  // sınırı. AI ile "en iyi fotoğraf" seçimi YOK — deterministik.
+                  const rep = selectedReport.representative_camera_image;
+                  if (!rep || !rep.image_base64) {
+                    return (
+                      <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
+                        Temsilî kamera görüntüsü elde edilemedi.
+                      </div>
+                    );
+                  }
+                  const src = rep.image_base64.startsWith("data:") ? rep.image_base64 : `data:image/jpeg;base64,${rep.image_base64}`;
+                  const ems = rep.elapsed_ms;
+                  const stamp = ems ? ` — +${String(Math.floor(ems / 60000)).padStart(2, "0")}:${String(Math.floor(ems / 1000) % 60).padStart(2, "0")}` : "";
+                  return (
+                    <div style={{ marginTop: 8 }}>
+                      <img src={src} alt="Temsilî Kamera Görüntüsü" style={{ width: 140, borderRadius: 8, border: `1px solid ${colors.border}`, display: "block" }} />
+                      <div style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>Temsilî Kamera Görüntüsü{stamp}</div>
+                    </div>
+                  );
+                })()}
+                {(() => {
                   // Form beyanı (candidates.education/university/department/experience_years) ile
                   // CV'den çıkarım (rapor gövdesi/Standart CV) bilinçli olarak ayrı tutulur — burada
                   // uzlaştırılmaz. Boş alan hiç gösterilmez; PDF'teki "BAŞVURU FORMU BEYANI" bloğuyla
