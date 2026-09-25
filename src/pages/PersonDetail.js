@@ -713,6 +713,21 @@ export default function PersonDetail() {
                   {levelLabel(selectedReport.level)} · Derinlik: {depthLabel(selectedReport.depth_tier)}
                 </div>
                 {(() => {
+                  // İş emri — MÜLAKAT ÖNCESİ KAMERA KALİTE KAPISI madde 14: yeni bir UI alanı/tablo
+                  // DEĞİL, mevcut result_events üzerinden en son 'camera_validation' olayı okunur.
+                  const events = Array.isArray(selectedReport.result_events) ? selectedReport.result_events : [];
+                  const camEvents = events.filter(e => e && e.type === "camera_validation");
+                  const camEvent = camEvents.length ? camEvents[camEvents.length - 1] : null;
+                  if (!camEvent) return null;
+                  const verified = camEvent.status === "verified";
+                  return (
+                    <div style={{ fontSize: 12, color: verified ? "#166534" : colors.muted, marginTop: 2 }}>
+                      Kamera Başlangıç Kontrolü: <span style={{ fontWeight: 700 }}>{verified ? "Doğrulandı" : "Doğrulanamadı"}</span>
+                      {!verified && camEvent.reason ? ` (${camEvent.reason})` : ""}
+                    </div>
+                  );
+                })()}
+                {(() => {
                   // Form beyanı (candidates.education/university/department/experience_years) ile
                   // CV'den çıkarım (rapor gövdesi/Standart CV) bilinçli olarak ayrı tutulur — burada
                   // uzlaştırılmaz. Boş alan hiç gösterilmez; PDF'teki "BAŞVURU FORMU BEYANI" bloğuyla

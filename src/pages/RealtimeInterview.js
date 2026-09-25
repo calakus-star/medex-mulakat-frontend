@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "../App";
+import CameraQualityGate from "../components/CameraQualityGate";
 
 const formatTime = (s) => {
   const safe = Math.max(0, Math.floor(s || 0));
@@ -332,7 +333,7 @@ export default function RealtimeInterview() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       streamRef.current = stream;
-      setStep("cv");
+      setStep("camera_check");
     } catch (e) {
       setCameraError("Kamera izni alınamadı. Lütfen tarayıcı ayarlarından izin verip tekrar deneyin.");
     }
@@ -1389,6 +1390,42 @@ export default function RealtimeInterview() {
           <button onClick={requestCamera} style={{ width: "100%", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
             Kameramı Etkinleştir
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "camera_check") {
+    // İş emri — MÜLAKAT ÖNCESİ KAMERA KALİTE KAPISI: L2/L3 ortak akışı, Interview.js (L1)
+    // ile aynı paylaşılan bileşen/modül üzerinden (kod KOPYALANMADI).
+    const onGateComplete = async (result) => {
+      try {
+        const candidateId = candidate ? candidate.id : null;
+        let snapshotId = null;
+        if (candidateId && result.frameDataUrl) {
+          const res = await axios.post(`${API_URL}/api/interview/snapshot`, {
+            candidate_id: candidateId, image_base64: result.frameDataUrl, reason: "camera_validation"
+          }, { headers: { Authorization: `Bearer ${token}` } });
+          snapshotId = res.data?.id ?? null;
+        }
+        await axios.post(`${API_URL}/api/interview/camera-validation`, {
+          candidate_id: candidateId, level: candidate ? candidate.level : null,
+          status: result.status, reason: result.reason, person_count: result.person_count,
+          basic_video_ok: result.basic_video_ok, detector_available: result.detector_available,
+          attempts: result.attempts, client_timestamp: result.timestamp, snapshot_id: snapshotId,
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      } catch (e) {
+        // Audit kaydı başarısız olsa bile aday mülakata devam edebilmelidir.
+      } finally {
+        setStep("cv");
+      }
+    };
+    return (
+      <div style={{ minHeight: "100vh", background: "#fafbfc", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" }}>
+        <div style={{ width: "100%", maxWidth: 420, background: "#fff", border: "1px solid #eef1f4", borderRadius: 20, padding: 40, boxShadow: "0 1px 3px rgba(15,23,42,0.04)", textAlign: "center" }}>
+          <div style={{ fontSize: 18, fontWeight: 600, color: "#0f172a", marginBottom: 8 }}>Kamera Kontrolü</div>
+          <video ref={attachVideoRef} autoPlay muted playsInline style={{ width: 160, borderRadius: 12, marginBottom: 16, transform: "scaleX(-1)", border: "1px solid #eef1f4" }} />
+          <CameraQualityGate videoRef={videoRef} onComplete={onGateComplete} />
         </div>
       </div>
     );
