@@ -1,38 +1,25 @@
-// İş emri — MÜLAKAT ÖNCESİ KAMERA KALİTE KAPISI (+ GÖRÜNTÜ VE SES GÖZLEMİ ZENGİLEŞTİRME turunda
-// DENETÇİ MANTIĞINA uyarlandı) — L1 (Interview.js) ve L2/L3 (RealtimeInterview.js) TARAFINDAN
-// ORTAK kullanılan doğrulama ekranı. Mantık cameraQualityGate.js'te (tek modül); bu bileşen
-// yalnız deneme sayacını ve kullanıcıya gösterilecek kısa uyarıyı yönetir — kod ekranlar
-// arasında KOPYALANMAZ.
+// İş emri — MÜLAKAT ÖNCESİ KAMERA KALİTE KAPISI
+// L1 (Interview.js) ve L2/L3 (RealtimeInterview.js) TARAFINDAN ORTAK kullanılan doğrulama
+// ekranı. Mantık cameraQualityGate.js'te (tek modül); bu bileşen yalnız deneme sayacını,
+// HARD/SOFT FAIL akışını ve kullanıcıya gösterilecek metni yönetir — kod ekranlar arasında
+// KOPYALANMAZ (iş emri madde 2).
 //
-// ANA PRENSİP (DEĞİŞMEZ): bu sistem POLİS değil DENETÇİDİR — kuralı hatırlatır, gözlemler,
-// gerekirse kısa uyarı gösterir, kaydeder, raporlar. ASLA mülakatı bloklamaz/durdurmaz/pause
-// etmez. Eskiden HARD FAIL durumları sınırsız manuel "Tekrar Kontrol Et" ile bloke ediyordu —
-// bu davranış KALDIRILDI: artık HARD ve SOFT durumlar AYNI bounded deneme sayacını paylaşır,
-// sayaç dolunca (kullanıcı hiç tıklamasa bile) UNVERIFIED ile mülakat otomatik olarak devam eder.
-//
-// GÜVENLİK SINIRI: bu bir UX/kalite/audit kapısıdır, kimlik/biyometrik doğrulama DEĞİLDİR.
+// GÜVENLİK SINIRI: bu bir UX/kalite kapısıdır, kimlik/biyometrik doğrulama DEĞİLDİR.
 import { useEffect, useRef, useState } from "react";
 import { Button, colors, FONT } from "./Layout";
-import { runCameraQualityCheck, MAX_GATE_ATTEMPTS } from "../utils/cameraQualityGate";
+import { runCameraQualityCheck, MAX_SOFT_ATTEMPTS } from "../utils/cameraQualityGate";
 
-// Kısa, nazik, olgu bazlı uyarılar — "hile/kandırma" gibi niyet ifadesi YOK (ANA PRENSİP).
-const FAIL_MESSAGES = {
-  no_stream: "Kamera görüntüsü alınamıyor.",
-  track_not_live: "Kamera bağlantısı kesilmiş görünüyor.",
-  video_not_ready: "Kamera görüntüsü henüz hazır değil.",
-  no_dimensions: "Kamera görüntüsü alınamıyor.",
-  black_or_dark_image: "Kamera görüntünüz çok karanlık görünüyor.",
-  frozen_video: "Kamera görüntüsü güncellenmiyor gibi görünüyor.",
-  multiple_people: "Kamerada yalnızca bir kişi görünmelidir.",
-  person_not_detected: "Kadrajda yüzünüz net şekilde görünmüyor.",
-  detector_unavailable: "Kamera doğrulaması teknik bir nedenle tamamlanamıyor.",
-  detector_timeout: "Kamera doğrulaması teknik bir nedenle tamamlanamıyor.",
-  detector_error: "Kamera doğrulaması teknik bir nedenle tamamlanamıyor.",
+const HARD_FAIL_MESSAGES = {
+  no_stream: "Kamera görüntüsü alınamıyor. Lütfen kameranızın başka bir uygulama tarafından kullanılmadığından emin olun ve tekrar deneyin.",
+  track_not_live: "Kamera bağlantısı kesilmiş görünüyor. Lütfen tekrar deneyin.",
+  video_not_ready: "Kamera görüntüsü henüz hazır değil. Lütfen birkaç saniye bekleyip tekrar deneyin.",
+  no_dimensions: "Kamera görüntüsü alınamıyor. Lütfen kameranızı kontrol edip tekrar deneyin.",
+  black_or_dark_image: "Kamera görüntüsü çok karanlık veya kapalı görünüyor. Lütfen lens kapağını/kapatıcıyı kontrol edin, ortamınızı aydınlatın ve tekrar deneyin.",
+  frozen_video: "Kamera görüntüsü donmuş görünüyor. Lütfen kameranızı kontrol edip tekrar deneyin.",
+  multiple_people: "Görüntüde birden fazla kişi tespit edildi. Lütfen mülakatı yalnız kendiniz, kadrajda yalnız siz olacak şekilde gerçekleştirin.",
 };
-const DEFAULT_MESSAGE = "Kamera görüntünüz şu an değerlendirilemiyor.";
-// İş emri madde 9 — kısa uyarıdan sonra otomatik yeniden dener (kullanıcı tıklamasa BİLE ilerler);
-// "Tekrar Kontrol Et" yalnız daha hızlı denemek isteyene kolaylıktır, zorunlu değildir.
-const AUTO_RETRY_DELAY_MS = 1500;
+
+const SOFT_FAIL_MESSAGE = "Kadrajda yüzünüz net şekilde görünmüyor. Lütfen kameraya biraz daha yaklaşın, ışığı iyileştirin ve tekrar deneyin.";
 
 /**
  * @param {object} props
@@ -42,50 +29,45 @@ const AUTO_RETRY_DELAY_MS = 1500;
  *   frameDataUrl: string|null, attempts: number}) => void} props.onComplete
  */
 export default function CameraQualityGate({ videoRef, onComplete }) {
-  const [phase, setPhase] = useState("checking"); // checking | retry
+  const [phase, setPhase] = useState("checking"); // checking | hard_fail | soft_retry
   const [message, setMessage] = useState("");
   const attemptRef = useRef(0);
+  const softAttemptsRef = useRef(0);
   const runningRef = useRef(false);
-  const completedRef = useRef(false);
-  const retryTimerRef = useRef(null);
-
-  const complete = (result) => {
-    if (completedRef.current) return; // çift onComplete çağrısına karşı koruma
-    completedRef.current = true;
-    onComplete(result);
-  };
 
   const runCheck = async () => {
-    if (runningRef.current || completedRef.current) return;
-    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+    if (runningRef.current) return;
     runningRef.current = true;
     setPhase("checking");
     attemptRef.current += 1;
     try {
       const result = await runCameraQualityCheck(videoRef.current);
       if (result.status === "verified") {
-        complete({ status: "verified", reason: result.reason, person_count: result.person_count,
-                   basic_video_ok: result.basic_video_ok, detector_available: result.detector_available,
-                   timestamp: result.timestamp, frameDataUrl: result.frameDataUrl, attempts: attemptRef.current });
+        onComplete({ status: "verified", reason: result.reason, person_count: result.person_count,
+                     basic_video_ok: result.basic_video_ok, detector_available: result.detector_available,
+                     timestamp: result.timestamp, frameDataUrl: result.frameDataUrl, attempts: attemptRef.current });
         return;
       }
-      // Ne HARD ne SOFT artık interview'u bloklar — ikisi de AYNI bounded deneme sayacını
-      // paylaşır. Sayaç dolunca (madde 1/9/35) mülakat otomatik, sessizce UNVERIFIED ile devam eder.
-      if (attemptRef.current >= MAX_GATE_ATTEMPTS) {
-        complete({ status: "unverified", reason: result.reason, person_count: result.person_count,
-                   basic_video_ok: result.basic_video_ok, detector_available: result.detector_available,
-                   timestamp: result.timestamp, frameDataUrl: result.frameDataUrl, attempts: attemptRef.current });
+      if (result.hard) {
+        // İş emri madde 10/11: HARD FAIL'de 3 deneme sınırı YOK, otomatik geçiş YOK —
+        // yalnız manuel "Tekrar Kontrol Et" ile devam edilebilir.
+        setMessage(HARD_FAIL_MESSAGES[result.reason] || "Kamera görüntüsü kullanılamıyor. Lütfen kontrol edip tekrar deneyin.");
+        setPhase("hard_fail");
         return;
       }
-      setMessage(FAIL_MESSAGES[result.reason] || DEFAULT_MESSAGE);
-      setPhase("retry");
-      // Otomatik yeniden deneme — kullanıcı hiçbir şeye tıklamasa da kapı kendi kendine ilerler.
-      retryTimerRef.current = setTimeout(runCheck, AUTO_RETRY_DELAY_MS);
-    } catch (e) {
-      // Kontrol fonksiyonunun kendisi beklenmedik şekilde reddederse dahi mülakat kilitlenmez.
-      complete({ status: "unverified", reason: "check_exception", person_count: null,
-                 basic_video_ok: null, detector_available: null,
-                 timestamp: new Date().toISOString(), frameDataUrl: null, attempts: attemptRef.current });
+      // SOFT FAIL (detector_unavailable/detector_error/person_not_detected)
+      softAttemptsRef.current += 1;
+      if (softAttemptsRef.current >= MAX_SOFT_ATTEMPTS) {
+        // İş emri madde 9/10: 3. soft-fail sonrası, temel kamera kalitesi PASS ise
+        // UNVERIFIED ile devam — adaya alarm gösterilmez, sessizce ilerler (UNVERIFIED/VERIFIED
+        // ayrımı yalnız admin tarafında anlamlıdır, madde 14).
+        onComplete({ status: "unverified", reason: result.reason, person_count: result.person_count,
+                     basic_video_ok: result.basic_video_ok, detector_available: result.detector_available,
+                     timestamp: result.timestamp, frameDataUrl: result.frameDataUrl, attempts: attemptRef.current });
+        return;
+      }
+      setMessage(SOFT_FAIL_MESSAGE);
+      setPhase("soft_retry");
     } finally {
       runningRef.current = false;
     }
@@ -93,16 +75,7 @@ export default function CameraQualityGate({ videoRef, onComplete }) {
 
   useEffect(() => {
     runCheck();
-    return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); };
-    // eslint-disable-next-line
   }, []);
-
-  const skipNow = () => {
-    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
-    complete({ status: "unverified", reason: "skipped_by_candidate", person_count: null,
-               basic_video_ok: null, detector_available: null,
-               timestamp: new Date().toISOString(), frameDataUrl: null, attempts: attemptRef.current });
-  };
 
   return (
     <div style={{ textAlign: "center", padding: "16px 4px" }}>
@@ -111,17 +84,12 @@ export default function CameraQualityGate({ videoRef, onComplete }) {
           Kamera görüntünüz kontrol ediliyor…
         </div>
       )}
-      {phase === "retry" && (
+      {(phase === "hard_fail" || phase === "soft_retry") && (
         <div>
-          <div style={{ color: colors.muted, fontSize: 13.5, fontFamily: FONT, marginBottom: 12, lineHeight: 1.5 }}>
+          <div style={{ color: phase === "hard_fail" ? colors.red : colors.muted, fontSize: 13.5, fontFamily: FONT, marginBottom: 12, lineHeight: 1.5 }}>
             {message}
           </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <Button variant="primary" onClick={runCheck}>Tekrar Kontrol Et</Button>
-            {/* İş emri madde 9/35 — kamera kontrolü hiçbir zaman zorunlu değildir; aday isterse
-                beklemeden mülakata devam edebilir. */}
-            <Button variant="secondary" onClick={skipNow}>Devam Et</Button>
-          </div>
+          <Button variant="primary" onClick={runCheck}>Tekrar Kontrol Et</Button>
         </div>
       )}
     </div>
