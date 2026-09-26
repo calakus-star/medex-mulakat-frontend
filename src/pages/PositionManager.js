@@ -199,30 +199,50 @@ export default function PositionManager({ token }) {
     );
   }
 
+  // İş emri — POZİSYONLAR & KRİTERLER ANA LİSTESİNİ KATEGORİYE GÖRE GRUPLA: mevcut
+  // position.category değeri okunup görsel olarak gruplanıyor — veri YAZILMIYOR/normalize
+  // edilmiyor. Grup içi sıra, positions.filter(active) sırası (mevcut davranış) İLE AYNI
+  // korunur; gruplar da ilk karşılaşılan pozisyonun sırasına göre listelenir. Kategorisi
+  // boş/null olan pozisyonlar mevcut fallback ile ("Genel") aynı gruba düşer.
+  const activePositions = positions.filter(p => p.active);
+  const groupOrder = [];
+  const groupedPositions = {};
+  activePositions.forEach(pos => {
+    const key = pos.category || "Genel";
+    if (!groupedPositions[key]) { groupedPositions[key] = []; groupOrder.push(key); }
+    groupedPositions[key].push(pos);
+  });
+
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink }}>Pozisyonlar & Kriterler</div>
         <Button onClick={startNew}>+ Yeni Pozisyon</Button>
       </div>
-      {positions.filter(p => p.active).map(pos => (
-        <div key={pos.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-            <div>
-              <div style={{ fontWeight: 700, color: colors.ink }}>{pos.name}</div>
-              <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{pos.category || "Genel"}</div>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <ChipButton onClick={() => startEdit(pos)}>Düzenle</ChipButton>
-              <ChipButton tone="red" onClick={() => deactivate(pos.id)}>Pasifleştir</ChipButton>
-            </div>
+      {groupOrder.map(groupName => (
+        <div key={groupName} style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 10, paddingBottom: 6, borderBottom: `1px solid ${colors.border}` }}>
+            {groupName}
           </div>
-          <div style={{ fontSize: 13, color: colors.muted, marginBottom: 8 }}>{pos.role_description}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {pos.criteria.map((c, i) => (
-              <Badge key={i}>{c.name} ({c.weight})</Badge>
-            ))}
-          </div>
+          {groupedPositions[groupName].map(pos => (
+            <div key={pos.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: colors.ink }}>{pos.name}</div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <ChipButton onClick={() => startEdit(pos)}>Düzenle</ChipButton>
+                  <ChipButton tone="red" onClick={() => deactivate(pos.id)}>Pasifleştir</ChipButton>
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: colors.muted, marginBottom: 8 }}>{pos.role_description}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {pos.criteria.map((c, i) => (
+                  <Badge key={i}>{c.name} ({c.weight})</Badge>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       ))}
     </Card>
