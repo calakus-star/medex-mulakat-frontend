@@ -322,6 +322,21 @@ export default function PersonDetail() {
     setError("");
   };
 
+  // İş emri — TAMAMLANMIŞ MÜLAKATLARDA SALT OKUNUR GÖRÜNTÜLEME: düzenlemeye değil, sadece
+  // görüntülemeye açar. Form aynı attemptFormFrom'dan doldurulur; alanların disabled olması
+  // JSX'te attemptMode==="view" kontrolüyle sağlanır (aşağıda). Backend zaten completed_at
+  // dolu bir mülakat için PATCH'i 409 ile reddediyor (admin_update_candidate) — bu buton o
+  // reddi tetiklemeye hiç çalışmaz, "Kaydet" hiç gösterilmez.
+  const startViewAttempt = (a) => {
+    setAttemptMode("view");
+    setEditingAttemptId(a.candidate_id);
+    const initial = attemptFormFrom(a);
+    setEditForm(initial);
+    editFormInitialRef.current = initial;
+    setEditCvFile(null);
+    setError("");
+  };
+
   // Tamamlanmış mülakat düzenlemeye kapalıdır — aynı kişi/aynı kaynak için yeni bir çağrı açar.
   const startNewAttempt = (a) => {
     setAttemptMode("new");
@@ -606,9 +621,14 @@ export default function PersonDetail() {
                   )}
                   {a.interview_completed_at ? (
                     <>
-                      <Button variant="secondary" disabled style={{ padding: "6px 12px", fontSize: 12, opacity: 0.5, cursor: "not-allowed" }}
-                        title="Tamamlanmış mülakat düzenlenemez. Yeni çağrı açın.">
-                        ✏️ Düzenle
+                      {/* İş emri — TAMAMLANMIŞ MÜLAKATLARDA SALT OKUNUR GÖRÜNTÜLEME: eskiden bu
+                          buton tamamen disabled'dı, girilmiş bilgiler hiç görülemiyordu. Artık
+                          salt-okunur görüntüleme moduna açar — düzenleme YOK, backend de zaten
+                          bu adayın PATCH'ini 409 ile reddediyor. */}
+                      <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }}
+                        onClick={() => (editingAttemptId === a.candidate_id && attemptMode === "view") ? closeAttemptForm() : startViewAttempt(a)}
+                        title="Tamamlanmış mülakat düzenlenemez; girilmiş bilgiler salt okunur görüntülenir.">
+                        {(editingAttemptId === a.candidate_id && attemptMode === "view") ? "Görüntülemeyi Kapat" : "👁 Görüntüle"}
                       </Button>
                       <Button variant="secondary" style={{ padding: "6px 12px", fontSize: 12 }}
                         onClick={() => (editingAttemptId === a.candidate_id && attemptMode === "new") ? closeAttemptForm() : startNewAttempt(a)}>
@@ -633,30 +653,40 @@ export default function PersonDetail() {
                         Bu kişi için <strong>yeni bir mülakat çağrısı</strong> oluşturulacak. Ad, e-posta, telefon ve eğitim bilgileri kaynak denemeden birebir kopyalanır; burada yalnızca pozisyon, seviye, derinlik, dil ve AI notu belirlenir. Eski deneme ve raporu olduğu gibi kalır.
                       </div>
                     )}
+                    {/* İş emri — TAMAMLANMIŞ MÜLAKATLARDA SALT OKUNUR GÖRÜNTÜLEME */}
+                    {attemptMode === "view" && (
+                      <div style={{ background: colors.surfaceAlt, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: colors.muted, marginBottom: 12, lineHeight: 1.5 }}>
+                        Bu mülakat tamamlanmıştır. Aşağıdaki bilgiler <strong>salt okunurdur</strong>, değiştirilemez ve kaydedilemez. Değişiklik yapmak için "Yeni çağrı" kullanın.
+                      </div>
+                    )}
                     <div className="admin-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <Input label="Ad Soyad" value={editForm.name} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
-                      <Input label="E-posta" value={editForm.email} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
-                      <Input label="Telefon" value={editForm.phone} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
-                      <Select label="Grup" options={groupOptions} value={editForm.positionGroup} onChange={e => setEditForm({ ...editForm, positionGroup: e.target.value, position: "" })} />
-                      <Select label="Pozisyon" options={positionOptionsForGroup(editForm.positionGroup)} value={editForm.position} onChange={e => setEditForm({ ...editForm, position: e.target.value })} disabled={!editForm.positionGroup} />
-                      <Select label="Mülakat Seviyesi" options={[{ value: 1, label: "Level 1" }, { value: 2, label: "Level 2" }, { value: 3, label: "Level 3" }]} value={editForm.level} onChange={e => setEditForm({ ...editForm, level: parseInt(e.target.value, 10) })} />
-                      <Select label="Derinlik" options={[{ value: "kisa", label: "Kısa" }, { value: "standart", label: "Standart" }, { value: "derin", label: "Derin" }]} value={editForm.depth_tier} onChange={e => setEditForm({ ...editForm, depth_tier: e.target.value })} />
-                      <Input label="Üniversite" value={editForm.university} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, university: e.target.value })} />
-                      <Input label="Bölüm" value={editForm.department} disabled={attemptMode === "new"} onChange={e => setEditForm({ ...editForm, department: e.target.value })} />
+                      <Input label="Ad Soyad" value={editForm.name} disabled={attemptMode === "new" || attemptMode === "view"} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+                      <Input label="E-posta" value={editForm.email} disabled={attemptMode === "new" || attemptMode === "view"} onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
+                      <Input label="Telefon" value={editForm.phone} disabled={attemptMode === "new" || attemptMode === "view"} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
+                      <Select label="Grup" options={groupOptions} value={editForm.positionGroup} onChange={e => setEditForm({ ...editForm, positionGroup: e.target.value, position: "" })} disabled={attemptMode === "view"} />
+                      <Select label="Pozisyon" options={positionOptionsForGroup(editForm.positionGroup)} value={editForm.position} onChange={e => setEditForm({ ...editForm, position: e.target.value })} disabled={!editForm.positionGroup || attemptMode === "view"} />
+                      <Select label="Mülakat Seviyesi" options={[{ value: 1, label: "Level 1" }, { value: 2, label: "Level 2" }, { value: 3, label: "Level 3" }]} value={editForm.level} onChange={e => setEditForm({ ...editForm, level: parseInt(e.target.value, 10) })} disabled={attemptMode === "view"} />
+                      <Select label="Derinlik" options={[{ value: "kisa", label: "Kısa" }, { value: "standart", label: "Standart" }, { value: "derin", label: "Derin" }]} value={editForm.depth_tier} onChange={e => setEditForm({ ...editForm, depth_tier: e.target.value })} disabled={attemptMode === "view"} />
+                      <Input label="Üniversite" value={editForm.university} disabled={attemptMode === "new" || attemptMode === "view"} onChange={e => setEditForm({ ...editForm, university: e.target.value })} />
+                      <Input label="Bölüm" value={editForm.department} disabled={attemptMode === "new" || attemptMode === "view"} onChange={e => setEditForm({ ...editForm, department: e.target.value })} />
                     </div>
                     <div style={{ marginBottom: 12 }}>
                       <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>AI Notu / Özel Talimat</label>
-                      <textarea rows={2} value={editForm.ai_note} onChange={e => setEditForm({ ...editForm, ai_note: e.target.value })} style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, resize: "vertical", boxSizing: "border-box" }} />
+                      <textarea rows={2} value={editForm.ai_note} disabled={attemptMode === "view"} onChange={e => setEditForm({ ...editForm, ai_note: e.target.value })} style={{ width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, resize: "vertical", boxSizing: "border-box" }} />
                     </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>
-                        {attemptMode === "new" ? "CV (opsiyonel — boş bırakılırsa kaynak CV kopyalanır)" : "CV Güncelle (opsiyonel)"}
-                      </label>
-                      <input type="file" accept=".pdf,.docx" onChange={e => setEditCvFile(e.target.files?.[0] || null)} style={{ width: "100%", padding: 11, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: FONT, boxSizing: "border-box" }} />
-                    </div>
-                    <Button disabled={loading} onClick={() => attemptMode === "new" ? saveNewAttempt() : saveEditAttempt()}>
-                      {loading ? "Kaydediliyor..." : (attemptMode === "new" ? "Yeni Çağrıyı Oluştur" : "Değişiklikleri Kaydet")}
-                    </Button>
+                    {attemptMode !== "view" && (
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>
+                          {attemptMode === "new" ? "CV (opsiyonel — boş bırakılırsa kaynak CV kopyalanır)" : "CV Güncelle (opsiyonel)"}
+                        </label>
+                        <input type="file" accept=".pdf,.docx" onChange={e => setEditCvFile(e.target.files?.[0] || null)} style={{ width: "100%", padding: 11, borderRadius: 8, border: `1px solid ${colors.border}`, fontFamily: FONT, boxSizing: "border-box" }} />
+                      </div>
+                    )}
+                    {attemptMode !== "view" && (
+                      <Button disabled={loading} onClick={() => attemptMode === "new" ? saveNewAttempt() : saveEditAttempt()}>
+                        {loading ? "Kaydediliyor..." : (attemptMode === "new" ? "Yeni Çağrıyı Oluştur" : "Değişiklikleri Kaydet")}
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

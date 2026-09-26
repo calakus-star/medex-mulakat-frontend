@@ -16,9 +16,24 @@ function sixEmptyCriteria() {
 export default function PositionManager({ token }) {
   const [positions, setPositions] = useState([]);
   const [editing, setEditing] = useState(null); // null = list, "new" = new form, id = editing
-  const categories = ["Klinik Araştırma", "Medikal / Regülasyon", "Veri Yönetimi", "Kalite", "Laboratuvar", "Bilgi Teknolojileri", "İnsan Kaynakları", "Finans", "Satış & Pazarlama", "Genel"].map(c => ({ value: c, label: c }));
+  // İş emri — POZİSYON GRUPLAMA: sabit tohum liste + DB'de zaten kullanılan (ör. daha önce
+  // eklenmiş özel bir grup) tüm kategori değerlerinin BİRLEŞİMİ. Grup, positions.category
+  // (düz metin kolon) olarak zaten kalıcı saklanıyor — backend'de sabit bir liste/enum YOK,
+  // bu yüzden burada yalnız DROPDOWN'a hangi seçeneklerin sunulacağı belirleniyor.
+  const CATEGORY_SEED = ["Klinik Araştırma", "Medikal / Regülasyon", "Veri Yönetimi", "Kalite", "Laboratuvar", "Bilgi Teknolojileri", "İnsan Kaynakları", "Finans", "Satış & Pazarlama", "Genel"];
+  const NEW_CATEGORY_SENTINEL = "__yeni_grup__";
   const [form, setForm] = useState({ name: "", category: "Genel", role_description: "", criteria: sixEmptyCriteria() });
+  const [addingNewCategory, setAddingNewCategory] = useState(false);
   const [error, setError] = useState("");
+
+  const knownCategories = Array.from(new Set([
+    ...CATEGORY_SEED,
+    ...positions.map(p => p.category).filter(Boolean),
+  ])).sort((a, b) => a.localeCompare(b, "tr"));
+  const categoryOptions = [
+    ...knownCategories.map(c => ({ value: c, label: c })),
+    { value: NEW_CATEGORY_SENTINEL, label: "+ Yeni Grup Ekle…" },
+  ];
 
   useEffect(() => { fetchPositions(); }, []);
 
@@ -35,6 +50,7 @@ export default function PositionManager({ token }) {
 
   const startNew = () => {
     setForm({ name: "", category: "Genel", role_description: "", criteria: sixEmptyCriteria() });
+    setAddingNewCategory(false);
     setEditing("new");
     setError("");
   };
@@ -44,8 +60,19 @@ export default function PositionManager({ token }) {
     let cr = Array.isArray(pos.criteria) ? [...pos.criteria] : [];
     while (cr.length < POSITION_CRITERIA_COUNT) cr.push(emptyCriterion());
     setForm({ name: pos.name, category: pos.category || "Genel", role_description: pos.role_description, criteria: cr });
+    setAddingNewCategory(false);
     setEditing(pos.id);
     setError("");
+  };
+
+  const handleCategorySelect = (value) => {
+    if (value === NEW_CATEGORY_SENTINEL) {
+      setAddingNewCategory(true);
+      setForm({ ...form, category: "" });
+    } else {
+      setAddingNewCategory(false);
+      setForm({ ...form, category: value });
+    }
   };
 
   const addCriterion = () => {
@@ -67,6 +94,7 @@ export default function PositionManager({ token }) {
       return;
     }
     if (form.criteria.some(c => !c.name.trim())) { setError("Tüm kriterlere isim girilmeli"); return; }
+    if (addingNewCategory && !form.category.trim()) { setError("Yeni grup adı girilmeli"); return; }
 
     try {
       const payload = { name: form.name, category: form.category || "Genel", role_description: form.role_description, criteria: form.criteria.map(c => ({ ...c, weight: parseInt(c.weight) || 0 })) };
@@ -101,7 +129,18 @@ export default function PositionManager({ token }) {
         {error && <Alert>{error}</Alert>}
         <div className="admin-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Input label="Pozisyon Adı" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="örn: Saha Eczacısı" />
-          <Select label="Kategori" options={categories} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
+          <div>
+            <Select label="Kategori (Grup)" options={categoryOptions} value={addingNewCategory ? NEW_CATEGORY_SENTINEL : form.category} onChange={e => handleCategorySelect(e.target.value)} />
+            {addingNewCategory && (
+              <input
+                autoFocus
+                value={form.category}
+                onChange={e => setForm({ ...form, category: e.target.value })}
+                placeholder="Yeni grup adı"
+                style={{ marginTop: 6, width: "100%", padding: "10px 13px", borderRadius: 8, border: `1px solid ${colors.border}`, fontSize: 14, fontFamily: FONT, boxSizing: "border-box" }}
+              />
+            )}
+          </div>
         </div>
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: colors.inkSoft, marginBottom: 6 }}>Görev Tanımı</label>
