@@ -781,8 +781,12 @@ export default function PersonDetail() {
                   if (!consent) {
                     return <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>KVKK onayı: Kayıt yok</div>;
                   }
-                  const dt = consent.consent_at ? new Date(consent.consent_at.replace(" ", "T")) : null;
-                  const fmt = dt && !isNaN(dt) ? `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}` : (consent.consent_at || "-");
+                  // DÜZELTME — DB değeri UTC (CURRENT_TIMESTAMP); Türkiye saati (sabit UTC+3,
+                  // 2016'dan beri DST yok) için tarayıcının yerel saat dilimine BAKILMAKSIZIN
+                  // +3 saat eklenip UTC bileşenleri okunur.
+                  const dt = consent.consent_at ? new Date(consent.consent_at.replace(" ", "T") + "Z") : null;
+                  const dtIst = dt && !isNaN(dt) ? new Date(dt.getTime() + 3 * 60 * 60 * 1000) : null;
+                  const fmt = dtIst ? `${String(dtIst.getUTCDate()).padStart(2, "0")}.${String(dtIst.getUTCMonth() + 1).padStart(2, "0")}.${dtIst.getUTCFullYear()} ${String(dtIst.getUTCHours()).padStart(2, "0")}:${String(dtIst.getUTCMinutes()).padStart(2, "0")} (TR saati)` : (consent.consent_at || "-");
                   return (
                     <div style={{ fontSize: 12, color: "#166534", marginTop: 2 }}>
                       KVKK onayı: <span style={{ fontWeight: 700 }}>Alındı</span> — {fmt}
