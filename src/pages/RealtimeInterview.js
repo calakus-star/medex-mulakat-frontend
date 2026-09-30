@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "../App";
 import CameraQualityGate from "../components/CameraQualityGate";
+import KvkkConsent from "../components/KvkkConsent";
 
 const formatTime = (s) => {
   const safe = Math.max(0, Math.floor(s || 0));
@@ -160,7 +161,8 @@ export default function RealtimeInterview() {
   const navigate = useNavigate();
   const token = localStorage.getItem("candidate_token");
 
-  const [step, setStep] = useState("camera"); // camera -> cv -> ready -> live -> finished
+  // İŞ EMRİ — BAŞLANGIÇ EKRANI/KVKK madde 1 — KVKK onayı, kamera/mikrofon istenmeden önce gösterilir.
+  const [step, setStep] = useState("kvkk"); // kvkk -> camera -> cv -> ready -> live -> finished
   const [candidate, setCandidate] = useState(null);
   const [cameraError, setCameraError] = useState("");
   const [cvFile, setCvFile] = useState(null);
@@ -1377,14 +1379,29 @@ export default function RealtimeInterview() {
 
   // ========================= RENDER =========================
 
+  if (step === "kvkk") {
+    return <KvkkConsent token={token} onAccepted={() => setStep("camera")} />;
+  }
+
   if (step === "camera") {
     return (
       <div style={{ minHeight: "100vh", background: "#fafbfc", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" }}>
         <div style={{ width: "100%", maxWidth: 420, background: "#fff", border: "1px solid #eef1f4", borderRadius: 20, padding: 40, boxShadow: "0 1px 3px rgba(15,23,42,0.04)", textAlign: "center" }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>MedeX SMO</div>
           <div style={{ fontSize: 19, fontWeight: 600, color: "#0f172a", marginBottom: 12 }}>Sesli Mülakata Hoş Geldiniz</div>
-          <div style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, marginBottom: 28 }}>
+          <div style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
             Bu mülakat tamamen sesli yürütülecektir. Kamera erişimi doğrulama amacıyla gereklidir.
+          </div>
+          {/* İŞ EMRİ — BAŞLANGIÇ EKRANI/KVKK madde 3 — mevcut kamera izni ekranına eklenen kurallar */}
+          <div style={{ background: "#fffbeb", border: "1px solid #f59e0b", borderRadius: 10, padding: 16, marginBottom: 20, fontSize: 13, color: "#92400e", textAlign: "left", lineHeight: 1.7 }}>
+            <strong>Mülakata başlamadan önce:</strong>
+            <ul style={{ margin: "8px 0 0 18px", padding: 0 }}>
+              <li>Sessiz bir ortamda ve mümkünse kulaklıkla katılın.</li>
+              <li>Kameranızı açın. Görüntünüz canlı olsun ve yüzünüz ışık alan bir yerde olsun.</li>
+              <li>Kamerada yalnızca siz görünün.</li>
+              <li>Mülakat sırasında başka bir sayfaya ya da uygulamaya geçmeyin. Bu durum kaydedilir. Üç kez tekrarlanırsa mülakat sonlandırılır.</li>
+            </ul>
+            <div style={{ marginTop: 10 }}>Bu kurallara uyulmaması kamera ve ses analizinde raporlanır ve değerlendirmenizi olumsuz etkileyebilir.</div>
           </div>
           {cameraError && <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 16 }}>{cameraError}</div>}
           <button onClick={requestCamera} style={{ width: "100%", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "13px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>

@@ -4,6 +4,7 @@ import axios from "axios";
 import { API_URL } from "../App";
 import { colors } from "../components/Layout";
 import CameraQualityGate from "../components/CameraQualityGate";
+import KvkkConsent from "../components/KvkkConsent";
 
 const formatTime = (s) => {
   const safe = Math.max(0, s || 0);
@@ -58,14 +59,19 @@ export default function Interview() {
   const navigate = useNavigate();
   const token = localStorage.getItem("candidate_token");
 
-  // ---- Adım kontrolü: camera -> cv -> interview ----
+  // ---- Adım kontrolü: kvkk -> kurallar -> camera -> cv -> interview ----
   // GÖREV 3.1 — Level 1 yazışmalı mülakattır (kamera yok); kamera adımını baştan atla.
+  // İŞ EMRİ — BAŞLANGIÇ EKRANI/KVKK madde 1 — KVKK onayı ve Kurallar ekranı, kamera/mikrofon
+  // istenmeden ve mülakat başlamadan ÖNCE gösterilir. L1'de kamera yok; Kurallar ekranı bu
+  // yüzden yalnız sayfa/uygulama değiştirme kuralını içerir (kamera cümleleri L1'e uygulanmaz).
+  const afterRulesStepRef = useRef("camera");
   const [step, setStep] = useState(() => {
     try {
       const p = JSON.parse(localStorage.getItem("candidate_info") || "{}");
-      return (p.level || 1) < 2 ? "cv" : "camera";
-    } catch (e) { return "camera"; }
-  }); // camera | cv | interview
+      afterRulesStepRef.current = (p.level || 1) < 2 ? "cv" : "camera";
+    } catch (e) { afterRulesStepRef.current = "camera"; }
+    return "kvkk";
+  }); // kvkk | kurallar | camera | cv | interview
   const [candidate, setCandidate] = useState(null);
 
   // ---- Kamera ----
@@ -838,6 +844,28 @@ export default function Interview() {
   };
 
   // ========================= RENDER =========================
+
+  if (step === "kvkk") {
+    return <KvkkConsent token={token} onAccepted={() => setStep("kurallar")} />;
+  }
+
+  if (step === "kurallar") {
+    return (
+      <div style={{ minHeight: "100vh", background: colors.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: 24, justifyContent: "center" }}>
+        <div style={{ width: "100%", maxWidth: 480, background: colors.white, borderRadius: 12, padding: 32, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", textAlign: "center" }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: colors.navy, marginBottom: 16 }}>Mülakata Başlamadan Önce</div>
+          <div style={{ background: "#fef9e7", border: "1px solid #f59e0b", borderRadius: 8, padding: 16, marginBottom: 20, fontSize: 14, color: "#92400e", textAlign: "left", lineHeight: 1.7 }}>
+            Mülakat sırasında başka bir sayfaya ya da uygulamaya geçmeyin. Bu durum kaydedilir. Üç kez tekrarlanırsa mülakat sonlandırılır.
+            <br /><br />
+            Bu kurala uyulmaması raporlanır ve değerlendirmenizi olumsuz etkileyebilir.
+          </div>
+          <button onClick={() => setStep(afterRulesStepRef.current)} style={{ background: colors.navy, color: "#fff", border: "none", borderRadius: 8, padding: "14px 32px", fontSize: 16, fontWeight: 600, cursor: "pointer", width: "100%" }}>
+            Devam
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (step === "camera") {
     return (

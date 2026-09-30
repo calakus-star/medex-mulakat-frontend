@@ -234,6 +234,24 @@ export default function PersonDetail() {
     }
   };
 
+  // İŞ EMRİ — BAŞLANGIÇ EKRANI/KVKK madde 5 — onay kaydı ayrı PDF olarak indirilebilir.
+  const downloadConsentPdf = async (candidateId, candidateName = "aday", level) => {
+    try {
+      const q = level ? `?level=${level}` : "";
+      const res = await apiClient.get(`${API_URL}/api/admin/interviews/${candidateId}/consent-pdf${q}`, { ...authHeaders, responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `KVKK_Onay_${candidateName.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setModalError("KVKK onay belgesi indirilemedi.");
+    }
+  };
+
   // BÖLÜM 2.3 — düz metin transkript indirme (hiçbir baraj yok)
   const downloadTranscript = async (candidateId, candidateName = "aday", level) => {
     try {
@@ -758,6 +776,29 @@ export default function PersonDetail() {
                   );
                 })()}
                 {(() => {
+                  // İŞ EMRİ — BAŞLANGIÇ EKRANI/KVKK madde 5 — her mülakatın altında onay durumu.
+                  const consent = selectedReport.consent;
+                  if (!consent) {
+                    return <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>KVKK onayı: Kayıt yok</div>;
+                  }
+                  const dt = consent.consent_at ? new Date(consent.consent_at.replace(" ", "T")) : null;
+                  const fmt = dt && !isNaN(dt) ? `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}` : (consent.consent_at || "-");
+                  return (
+                    <div style={{ fontSize: 12, color: "#166534", marginTop: 2 }}>
+                      KVKK onayı: <span style={{ fontWeight: 700 }}>Alındı</span> — {fmt}
+                      <details style={{ marginTop: 4, color: colors.muted }}>
+                        <summary style={{ cursor: "pointer", fontWeight: 600 }}>Onay kaydı detayları</summary>
+                        <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+                          Kurum (tenant): {consent.tenant_name || "-"}<br />
+                          Metin sürümü: {consent.text_version}<br />
+                          IP adresi: {consent.ip_address || "-"}<br />
+                          Tarayıcı: {consent.user_agent || "-"}
+                        </div>
+                      </details>
+                    </div>
+                  );
+                })()}
+                {(() => {
                   // Form beyanı (candidates.education/university/department/experience_years) ile
                   // CV'den çıkarım (rapor gövdesi/Standart CV) bilinçli olarak ayrı tutulur — burada
                   // uzlaştırılmaz. Boş alan hiç gösterilmez; PDF'teki "BAŞVURU FORMU BEYANI" bloğuyla
@@ -778,6 +819,9 @@ export default function PersonDetail() {
               <div style={{ display: "flex", gap: 8 }}>
                 <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadTranscript(selectedReport.candidate_id, selectedReport.name, selectedReport.level)}>Transkripti İndir</Button>
                 <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadPdf(selectedReport.candidate_id, selectedReport.name)}>PDF İndir</Button>
+                {selectedReport.consent && (
+                  <Button variant="secondary" style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => downloadConsentPdf(selectedReport.candidate_id, selectedReport.name, selectedReport.level)}>KVKK Onay Belgesi</Button>
+                )}
                 <Button variant="secondary" disabled={regenerating} style={{ padding: "8px 12px", fontSize: 12 }} onClick={() => regenerateReport(selectedReport.candidate_id, selectedReport.level)}>{regenerating ? "Başlatılıyor…" : "Raporu Yeniden Üret"}</Button>
                 <button onClick={() => { setSelectedReport(null); setSnapshots([]); setModalError(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: colors.muted, fontSize: 20 }}>✕</button>
               </div>
