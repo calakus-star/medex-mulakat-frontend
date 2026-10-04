@@ -25,6 +25,10 @@ export default function PositionManager({ token }) {
   const [form, setForm] = useState({ name: "", category: "Genel", role_description: "", criteria: sixEmptyCriteria() });
   const [addingNewCategory, setAddingNewCategory] = useState(false);
   const [error, setError] = useState("");
+  // İş emri — POZİSYONLAR SAYFASINDA GRUP SEÇİMİ: listeyi filtreleyen seçim. "Tümü" başlangıç
+  // değeri; startNew/startEdit/save/deactivate bu state'e hiç dokunmuyor, bu yüzden düzenleme/
+  // pasifleştirme sonrası seçili grup kendiliğinden korunuyor (madde 5).
+  const [selectedGroup, setSelectedGroup] = useState("Tümü");
 
   const knownCategories = Array.from(new Set([
     ...CATEGORY_SEED,
@@ -213,13 +217,22 @@ export default function PositionManager({ token }) {
     groupedPositions[key].push(pos);
   });
 
+  // İş emri — POZİSYONLAR SAYFASINDA GRUP SEÇİMİ madde 2: "Tümü" + sistemdeki mevcut gruplar
+  // (yukarıdaki gruplama ile AYNI kaynak — activePositions'ta fiilen var olan kategoriler),
+  // alfabetik sırada.
+  const groupFilterOptions = ["Tümü", ...[...groupOrder].sort((a, b) => a.localeCompare(b, "tr"))];
+  const visibleGroupOrder = selectedGroup === "Tümü" ? groupOrder : groupOrder.filter(g => g === selectedGroup);
+
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink }}>Pozisyonlar & Kriterler</div>
         <Button onClick={startNew}>+ Yeni Pozisyon</Button>
       </div>
-      {groupOrder.map(groupName => (
+      <div style={{ marginBottom: 16, maxWidth: 280 }}>
+        <Select label="Grup" options={groupFilterOptions.map(g => ({ value: g, label: g }))} value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)} />
+      </div>
+      {visibleGroupOrder.map(groupName => (
         <div key={groupName} style={{ marginBottom: 22 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: colors.inkSoft, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 10, paddingBottom: 6, borderBottom: `1px solid ${colors.border}` }}>
             {groupName}
