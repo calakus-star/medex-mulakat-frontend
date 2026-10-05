@@ -254,7 +254,7 @@ export default function AdminDashboard() {
           ]}
         />
 
-        {tab === "positions" && <PositionManager token={token} />}
+        {tab === "positions" && <PositionManager token={token} adminRole={adminRole} />}
         {tab === "walkin" && <WalkinPanel token={token} />}
         {tab === "cvpool" && <CvPool token={token} />}
         {tab === "errors" && (

@@ -13,7 +13,7 @@ function sixEmptyCriteria() {
   return Array.from({ length: POSITION_CRITERIA_COUNT }, emptyCriterion);
 }
 
-export default function PositionManager({ token }) {
+export default function PositionManager({ token, adminRole }) {
   const [positions, setPositions] = useState([]);
   const [editing, setEditing] = useState(null); // null = list, "new" = new form, id = editing
   // İş emri — POZİSYON GRUPLAMA: sabit tohum liste + DB'de zaten kullanılan (ör. daha önce
@@ -25,6 +25,11 @@ export default function PositionManager({ token }) {
   const [form, setForm] = useState({ name: "", category: "Genel", role_description: "", criteria: sixEmptyCriteria() });
   const [addingNewCategory, setAddingNewCategory] = useState(false);
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  // İŞ EMRİ — SÜPERADMİN İÇİN "TÜM KURUMLARA EKLE" SEÇENEĞİ madde 1 — yalnız YENİ pozisyon
+  // ekranında, yalnız süperadmin'e görünür; varsayılan "Yalnız MedeX'e ekle". Düzenleme
+  // formunda bu seçenek hiç render edilmez (madde 3).
+  const [applyToAllOrgs, setApplyToAllOrgs] = useState(false);
   // İş emri — POZİSYONLAR SAYFASINDA GRUP SEÇİMİ: listeyi filtreleyen seçim. "Tümü" başlangıç
   // değeri; startNew/startEdit/save/deactivate bu state'e hiç dokunmuyor, bu yüzden düzenleme/
   // pasifleştirme sonrası seçili grup kendiliğinden korunuyor (madde 5).
@@ -55,8 +60,10 @@ export default function PositionManager({ token }) {
   const startNew = () => {
     setForm({ name: "", category: "Genel", role_description: "", criteria: sixEmptyCriteria() });
     setAddingNewCategory(false);
+    setApplyToAllOrgs(false);
     setEditing("new");
     setError("");
+    setSuccessMsg("");
   };
 
   const startEdit = (pos) => {
@@ -103,7 +110,9 @@ export default function PositionManager({ token }) {
     try {
       const payload = { name: form.name, category: form.category || "Genel", role_description: form.role_description, criteria: form.criteria.map(c => ({ ...c, weight: parseInt(c.weight) || 0 })) };
       if (editing === "new") {
-        await apiClient.post(`${API_URL}/api/admin/positions`, payload, { headers: { Authorization: `Bearer ${token}` } });
+        if (adminRole === "superadmin" && applyToAllOrgs) payload.apply_to_all_orgs = true;
+        const res = await apiClient.post(`${API_URL}/api/admin/positions`, payload, { headers: { Authorization: `Bearer ${token}` } });
+        if (payload.apply_to_all_orgs && res.data?.message) setSuccessMsg(res.data.message);
       } else {
         await apiClient.put(`${API_URL}/api/admin/positions/${editing}`, payload, { headers: { Authorization: `Bearer ${token}` } });
       }
@@ -156,6 +165,19 @@ export default function PositionManager({ token }) {
             placeholder="Bu pozisyonda kişi ne yapacak?"
           />
         </div>
+
+        {editing === "new" && adminRole === "superadmin" && (
+          <div style={{ marginBottom: 16, padding: 12, border: `1px solid ${colors.border}`, borderRadius: 8, background: colors.surfaceAlt }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, marginBottom: 6, cursor: "pointer" }}>
+              <input type="radio" name="apply_scope" checked={!applyToAllOrgs} onChange={() => setApplyToAllOrgs(false)} />
+              Yalnız MedeX'e ekle
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, cursor: "pointer" }}>
+              <input type="radio" name="apply_scope" checked={applyToAllOrgs} onChange={() => setApplyToAllOrgs(true)} />
+              Tüm kurumlara ekle
+            </label>
+          </div>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <label style={{ fontSize: 13, fontWeight: 600, color: colors.inkSoft }}>
@@ -229,6 +251,7 @@ export default function PositionManager({ token }) {
         <div style={{ fontWeight: 700, fontSize: 15.5, color: colors.ink }}>Pozisyonlar & Kriterler</div>
         <Button onClick={startNew}>+ Yeni Pozisyon</Button>
       </div>
+      {successMsg && <Alert type="success">{successMsg}</Alert>}
       <div style={{ marginBottom: 16, maxWidth: 280 }}>
         <Select label="Grup" options={groupFilterOptions.map(g => ({ value: g, label: g }))} value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)} />
       </div>
