@@ -76,7 +76,7 @@ export default function GeneralApply() {
         <Header subtitle="İş Başvurusu" />
         <Card>
           <div style={{ marginBottom: 22 }}>
-            <div style={{ fontSize: 19, fontWeight: 700, color: colors.ink, marginBottom: 4 }}>MedeX SMO Başvuru Formu</div>
+            <div style={{ fontSize: 19, fontWeight: 700, color: colors.ink, marginBottom: 4 }}>MACS4 Başvuru Formu</div>
             <div style={{ color: colors.muted, fontSize: 13.5 }}>Eğitim bilgisi zorunludur. CV isteğe bağlıdır; daha sonra da eklenebilir.</div>
           </div>
           {error && <Alert>{error}</Alert>}

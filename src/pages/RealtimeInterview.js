@@ -163,6 +163,9 @@ export default function RealtimeInterview() {
 
   // İŞ EMRİ — BAŞLANGIÇ EKRANI/KVKK madde 1 — KVKK onayı, kamera/mikrofon istenmeden önce gösterilir.
   const [step, setStep] = useState("kvkk"); // kvkk -> camera -> cv -> ready -> live -> finished
+  // İŞ EMRİ — SABİT 'MEDEX' ADLARININ KURUM ADIYLA DEĞİŞTİRİLMESİ: adayın kurumu, KVKK onay
+  // ekranının çektiği /api/consent/current yanıtından geliyor.
+  const [orgName, setOrgName] = useState("MACS4");
   const [candidate, setCandidate] = useState(null);
   const [cameraError, setCameraError] = useState("");
   const [cvFile, setCvFile] = useState(null);
@@ -1380,14 +1383,14 @@ export default function RealtimeInterview() {
   // ========================= RENDER =========================
 
   if (step === "kvkk") {
-    return <KvkkConsent token={token} onAccepted={() => setStep("camera")} />;
+    return <KvkkConsent token={token} onAccepted={(tenantName) => { if (tenantName) setOrgName(tenantName); setStep("camera"); }} />;
   }
 
   if (step === "camera") {
     return (
       <div style={{ minHeight: "100vh", background: "#fafbfc", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" }}>
         <div style={{ width: "100%", maxWidth: 420, background: "#fff", border: "1px solid #eef1f4", borderRadius: 20, padding: 40, boxShadow: "0 1px 3px rgba(15,23,42,0.04)", textAlign: "center" }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>MedeX SMO</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>{orgName}</div>
           <div style={{ fontSize: 19, fontWeight: 600, color: "#0f172a", marginBottom: 12 }}>Sesli Mülakata Hoş Geldiniz</div>
           <div style={{ color: "#64748b", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
             Bu mülakat tamamen sesli yürütülecektir. Kamera erişimi doğrulama amacıyla gereklidir.
@@ -1509,7 +1512,7 @@ export default function RealtimeInterview() {
       <div style={{ width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: 14, marginTop: 24 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 4px 8px" }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 3 }}>MedeX SMO</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 3 }}>{orgName}</div>
             <div style={{ color: "#0f172a", fontSize: 16, fontWeight: 600 }}>{candidate?.name}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>

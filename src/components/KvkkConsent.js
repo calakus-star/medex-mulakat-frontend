@@ -19,7 +19,7 @@ export default function KvkkConsent({ token, onAccepted }) {
       .then((res) => {
         if (cancelled) return;
         if (res.data.already_given) {
-          onAccepted();
+          onAccepted(res.data.tenant_name);
           return;
         }
         setInfo(res.data);
@@ -34,7 +34,7 @@ export default function KvkkConsent({ token, onAccepted }) {
     setError("");
     try {
       await axios.post(`${API_URL}/api/consent/accept`, {}, { headers: { Authorization: `Bearer ${token}` } });
-      onAccepted();
+      onAccepted(info?.tenant_name);
     } catch (e) {
       setError("Onayınız kaydedilemedi. Lütfen tekrar deneyin.");
       setSubmitting(false);

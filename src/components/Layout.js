@@ -27,7 +27,10 @@ export const colors = {
 
 export const FONT = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif";
 
-export function Header({ subtitle, badge = "AI Mülakat Sistemi" }) {
+// İŞ EMRİ — SABİT 'MEDEX' ADLARININ KURUM ADIYLA DEĞİŞTİRİLMESİ madde 2: kurum bilinmeyen
+// (giriş öncesi) sayfalarda platform adı "MACS4" kullanılır; kurum bilinen sayfalar (ör.
+// PersonDetail) orgName prop'uyla kendi kurum adını geçer.
+export function Header({ subtitle, badge = "AI Mülakat Sistemi", orgName = "MACS4" }) {
   return (
     <div style={{
       background: colors.surface, border: `1px solid ${colors.border}`, padding: "16px 22px",
@@ -36,7 +39,7 @@ export function Header({ subtitle, badge = "AI Mülakat Sistemi" }) {
     }}>
       <div>
         <div style={{ color: colors.mutedLight, fontSize: 11, fontWeight: 600, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 4 }}>
-          MedeX SMO
+          {orgName}
         </div>
         <div style={{ color: colors.ink, fontSize: 17, fontWeight: 600 }}>{subtitle}</div>
       </div>

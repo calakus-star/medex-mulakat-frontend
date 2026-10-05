@@ -63,6 +63,8 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState(searchParams.get("tab") || "candidates");
   const [positionsRaw, setPositionsRaw] = useState([]);
   const [adminRole, setAdminRole] = useState(null);
+  // İŞ EMRİ — SABİT 'MEDEX' ADLARININ KURUM ADIYLA DEĞİŞTİRİLMESİ: giriş yapan adminin kurumu.
+  const [orgName, setOrgName] = useState("MACS4");
   const [listFilter, setListFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [errorLogAlert, setErrorLogAlert] = useState(0); // çözülmemiş kritik hata sayısı (kırmızı bant)
@@ -88,7 +90,10 @@ export default function AdminDashboard() {
         setPositionsRaw(list);
       });
     apiClient.get(`${API_URL}/api/admin/profile`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => setAdminRole(res.data?.admin_role || null))
+      .then(res => {
+        setAdminRole(res.data?.admin_role || null);
+        if (res.data?.org_name) setOrgName(res.data.org_name);
+      })
       .catch(() => {});
     refreshErrorLogAlert();
     // eslint-disable-next-line
@@ -209,7 +214,7 @@ export default function AdminDashboard() {
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
           <div style={{ background: colors.ink, padding: "12px 22px", borderRadius: 10, flex: "1 1 240px" }}>
-            <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 11, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase" }}>MedeX SMO</div>
+            <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 11, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase" }}>{orgName}</div>
             <div style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>Admin Paneli</div>
           </div>
           <Button variant="secondary" onClick={() => { localStorage.removeItem("admin_token"); navigate("/admin"); }}>

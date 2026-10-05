@@ -65,6 +65,9 @@ export default function Interview() {
   // istenmeden ve mülakat başlamadan ÖNCE gösterilir. L1'de kamera yok; Kurallar ekranı bu
   // yüzden yalnız sayfa/uygulama değiştirme kuralını içerir (kamera cümleleri L1'e uygulanmaz).
   const afterRulesStepRef = useRef("camera");
+  // İŞ EMRİ — SABİT 'MEDEX' ADLARININ KURUM ADIYLA DEĞİŞTİRİLMESİ: adayın kurumu, KVKK onay
+  // ekranının çektiği /api/consent/current yanıtından geliyor (madde 1).
+  const [orgName, setOrgName] = useState("MACS4");
   const [step, setStep] = useState(() => {
     try {
       const p = JSON.parse(localStorage.getItem("candidate_info") || "{}");
@@ -846,7 +849,7 @@ export default function Interview() {
   // ========================= RENDER =========================
 
   if (step === "kvkk") {
-    return <KvkkConsent token={token} onAccepted={() => setStep("kurallar")} />;
+    return <KvkkConsent token={token} onAccepted={(tenantName) => { if (tenantName) setOrgName(tenantName); setStep("kurallar"); }} />;
   }
 
   if (step === "kurallar") {
@@ -1029,7 +1032,7 @@ export default function Interview() {
 
         <div className="interview-header" style={{ background: colors.navy, borderRadius: 12, padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <div style={{ color: colors.blue, fontSize: 11, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>MedeX SMO</div>
+            <div style={{ color: colors.blue, fontSize: 11, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>{orgName}</div>
             <div style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>AI Mülakat</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>

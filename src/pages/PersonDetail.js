@@ -104,6 +104,9 @@ export default function PersonDetail() {
   const [sessionOpen, setSessionOpen] = useState(false); // BÖLÜM D1 — katlanabilir tam oturum kaydı
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [editCvFile, setEditCvFile] = useState(null);
+  // İŞ EMRİ — SABİT 'MEDEX' ADLARININ KURUM ADIYLA DEĞİŞTİRİLMESİ: giriş yapan adminin kurumu
+  // (kurum yoksa/superadmin ise backend "MACS4" döner).
+  const [orgName, setOrgName] = useState("MACS4");
   // Değişmemiş alanları PATCH gövdesinden dışlayabilmek için formun açılış anlık
   // görüntüsü — startEditAttempt'te doldurulur, saveEditAttempt'te diff için okunur.
   const editFormInitialRef = useRef(null);
@@ -129,6 +132,9 @@ export default function PersonDetail() {
     apiClient.get(`${API_URL}/api/admin/positions`, authHeaders).then(res => {
       setPositionsRaw((Array.isArray(res.data) ? res.data : []).filter(p => p.active));
     });
+    apiClient.get(`${API_URL}/api/admin/profile`, authHeaders).then(res => {
+      if (res.data?.org_name) setOrgName(res.data.org_name);
+    }).catch(() => {});
     // eslint-disable-next-line
   }, [id]);
 
@@ -208,7 +214,7 @@ export default function PersonDetail() {
       const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `MedeX_Rapor_${candidateName.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`);
+      link.setAttribute("download", `${orgName.replace(/[^a-zA-Z0-9_-]/g, "_")}_Rapor_${candidateName.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -260,7 +266,7 @@ export default function PersonDetail() {
       const url = window.URL.createObjectURL(new Blob([res.data], { type: "text/plain" }));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `MedeX_Transkript_${candidateName.replace(/[^a-zA-Z0-9_-]/g, "_")}.txt`);
+      link.setAttribute("download", `${orgName.replace(/[^a-zA-Z0-9_-]/g, "_")}_Transkript_${candidateName.replace(/[^a-zA-Z0-9_-]/g, "_")}.txt`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -521,7 +527,7 @@ export default function PersonDetail() {
         <div style={{ marginBottom: 14 }}>
           <Button variant="secondary" onClick={() => navigate("/admin/panel")}>← Geri</Button>
         </div>
-        <Header subtitle={`Kişi Geçmişi — ${person.full_name || "İsimsiz"}`} />
+        <Header subtitle={`Kişi Geçmişi — ${person.full_name || "İsimsiz"}`} orgName={orgName} />
 
         {success && <Alert type="success">{success}</Alert>}
         {error && <Alert>{error}</Alert>}
