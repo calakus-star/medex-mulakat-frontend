@@ -232,6 +232,12 @@ export default function RealtimeInterview() {
   const transcriptRef = useRef([]); // [{role:'aday'|'mülakatçı', text}]
   const answeredCountRef = useRef(0);
   const assistantDeltaRef = useRef("");
+  // İŞ EMRİ — TRANSKRİPT ZAMAN DAMGASI DÜZELTMESİ: satırlar artık metnin HAZIR olduğu anla
+  // değil, turun BAŞLADIĞI anla damgalanır. Aday: speech_started anındaki elapsed, item_id ile
+  // eşlenir. Mülakatçı: response.created anındaki elapsed (tek aktif yanıt varsayımı — bkz.
+  // hasActiveResponseRef/interrupt_response:false, aynı anda iki aktif yanıt olmaz).
+  const candidateItemStartMsRef = useRef(new Map());
+  const currentResponseStartMsRef = useRef(null);
   const finishedRef = useRef(false);
   const submitReportRef = useRef(() => {});
   // Ses seviyesi görselleştirme: mevcut mikrofon/AI ses akışlarını PASİF olarak (salt-okunur,
@@ -481,10 +487,14 @@ export default function RealtimeInterview() {
     levelRafRef.current = requestAnimationFrame(tick);
   };
 
-  const appendTranscript = (role, text) => {
+  const appendTranscript = (role, text, startMs = null) => {
     if (!text || !text.trim()) return;
     // BÖLÜM 2.1: her satıra mülakat başından beri geçen süre (elapsed_ms) — transkriptte [mm:ss].
-    transcriptRef.current.push({ role, text: text.trim(), ms: Math.round((elapsedRef.current || 0) * 1000) });
+    // İŞ EMRİ — TRANSKRİPT ZAMAN DAMGASI DÜZELTMESİ: startMs verilmişse (turun başladığı an)
+    // onu kullan; verilmemişse (eşleşme bulunamadıysa) eskisi gibi ŞİMDİKİ elapsed'e düş —
+    // satır asla kaybolmaz, yalnızca damgası geç kalır.
+    const ms = startMs !== null && startMs !== undefined ? startMs : Math.round((elapsedRef.current || 0) * 1000);
+    transcriptRef.current.push({ role, text: text.trim(), ms });
   };
 
   // Faz D1: ham Realtime olaylarını (şu ana kadar sadece konsola yazılıp kayboluyordu) backend'e
@@ -592,11 +602,17 @@ export default function RealtimeInterview() {
   const markUsageSynced = () => { syncedUsageRef.current = { ...realtimeUsageRef.current }; };
 
   const currentTranscriptText = () =>
-    transcriptRef.current.map(t => {
-      const s = Math.max(0, Math.round((t.ms || 0) / 1000));
-      const stamp = `[${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}] `;
-      return `${stamp}${t.role === "aday" ? "Aday" : "Mülakatçı"}: ${t.text}`;
-    }).join("\n");
+    // İŞ EMRİ — TRANSKRİPT ZAMAN DAMGASI DÜZELTMESİ: satırlar artık geliş sırasında değil, tur
+    // başlangıcı (ms) sırasında yazılmalı — aksi halde damga düzelse de görünen sıra değişmez.
+    // Stable sıralama: eşit ms'de orijinal geliş sırası korunur (index ikincil anahtar).
+    transcriptRef.current
+      .map((t, i) => ({ t, i }))
+      .sort((a, b) => (a.t.ms || 0) - (b.t.ms || 0) || a.i - b.i)
+      .map(({ t }) => {
+        const s = Math.max(0, Math.round((t.ms || 0) / 1000));
+        const stamp = `[${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}] `;
+        return `${stamp}${t.role === "aday" ? "Aday" : "Mülakatçı"}: ${t.text}`;
+      }).join("\n");
 
   // Görüşme SÜRERKEN periyodik ara kayıt: submitReport hiç tetiklenmezse bile (sekme kapandı,
   // bağlantı koptu, AI end_interview'i hiç çağırmadı) transkript ve token kullanımı tamamen
@@ -1221,6 +1237,12 @@ export default function RealtimeInterview() {
         break;
       case "input_audio_buffer.speech_started": {
         pushRealtimeEvent("input_audio_buffer.speech_started", { audio_start_ms: evt.audio_start_ms, item_id: evt.item_id });
+        // İŞ EMRİ — TRANSKRİPT ZAMAN DAMGASI DÜZELTMESİ: bu turun BAŞLADIĞI an, item_id ile
+        // eşlenip saklanır; transcription.completed geldiğinde (metin HAZIR olduğunda) bu anı
+        // geri okuyup satırı buna göre damgalayacağız.
+        if (evt.item_id) {
+          candidateItemStartMsRef.current.set(evt.item_id, Math.round((elapsedRef.current || 0) * 1000));
+        }
         candidateSpeechActiveRef.current = true;
         setPhase("listening"); phaseRef.current = "listening";
         // TV, masa, nefes veya kısa çevre sesi AI'ı kesmesin. Gerçek araya giriş için
@@ -1261,6 +1283,9 @@ export default function RealtimeInterview() {
         hasActiveResponseRef.current = true;
         // FAZ D: AI düşünme süresi metriği (speech_stopped -> response.created).
         pushRealtimeEvent("response.created", {});
+        // İŞ EMRİ — TRANSKRİPT ZAMAN DAMGASI DÜZELTMESİ: bu yanıtın BAŞLADIĞI an — mülakatçı
+        // satırı audio_transcript.done geldiğinde (metin HAZIR olduğunda) bu ana damgalanacak.
+        currentResponseStartMsRef.current = Math.round((elapsedRef.current || 0) * 1000);
         setPhase("speaking"); phaseRef.current = "speaking";
         ensureAudioPlaybackRef.current("response.created");
         break;
@@ -1304,7 +1329,13 @@ export default function RealtimeInterview() {
             pushRealtimeEvent("transcription_filtered", { text: String(evt.transcript).slice(0, 200), reason: "kısa/anlamsız İngilizce dolgu — olası Whisper halüsinasyonu" });
             logDebug("B1: halüsinasyon şüphesi, transkripte alınmadı: " + JSON.stringify(evt.transcript).slice(0, 80));
           } else {
-            appendTranscript("aday", evt.transcript);
+            // İŞ EMRİ — TRANSKRİPT ZAMAN DAMGASI DÜZELTMESİ: item_id ile saklanan tur başlangıcı
+            // bulunursa onu kullan (ve haritadan sil — tek kullanımlık); bulunamazsa (eşleşme
+            // yoksa) appendTranscript eski davranışa (şimdiki elapsed) düşer, satır düşmez.
+            const _startMs = evt.item_id && candidateItemStartMsRef.current.has(evt.item_id)
+              ? candidateItemStartMsRef.current.get(evt.item_id) : null;
+            if (evt.item_id) candidateItemStartMsRef.current.delete(evt.item_id);
+            appendTranscript("aday", evt.transcript, _startMs);
             answeredCountRef.current += 1;
           }
         }
@@ -1316,7 +1347,12 @@ export default function RealtimeInterview() {
       case "response.audio_transcript.done":
       case "response.output_audio_transcript.done": {
         const spoken = assistantDeltaRef.current.trim();
-        appendTranscript("mülakatçı", spoken);
+        // İŞ EMRİ — TRANSKRİPT ZAMAN DAMGASI DÜZELTMESİ: response.created anında saklanan yanıt
+        // başlangıcını kullan (ve tek kullanımlık olarak temizle); yoksa appendTranscript eski
+        // davranışa (şimdiki elapsed) düşer, satır düşmez.
+        const _responseStartMs = currentResponseStartMsRef.current;
+        currentResponseStartMsRef.current = null;
+        appendTranscript("mülakatçı", spoken, _responseStartMs);
         assistantDeltaRef.current = "";
         // FAZ D: AI konuşma bitişi — aday yanıt gecikmesi metriği (bu olay -> sonraki speech_started).
         pushRealtimeEvent("response.audio_transcript.done", {});
