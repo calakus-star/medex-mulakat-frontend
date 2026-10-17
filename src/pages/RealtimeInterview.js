@@ -1356,10 +1356,8 @@ export default function RealtimeInterview() {
         assistantDeltaRef.current = "";
         // FAZ D: AI konuşma bitişi — aday yanıt gecikmesi metriği (bu olay -> sonraki speech_started).
         pushRealtimeEvent("response.audio_transcript.done", {});
-        // Ekranda yalnızca adaydan cevap bekleyen son soruyu göster.
-        const questionMatches = spoken.match(/[^.!?]*\?/g);
-        const lastQuestion = questionMatches?.length ? questionMatches[questionMatches.length - 1].trim() : "";
-        if (lastQuestion) setCurrentQuestion(lastQuestion);
+        // Ekranda mülakatçının turunu kırpmadan, tam haliyle göster.
+        if (spoken) setCurrentQuestion(spoken);
         // Model kapanış cümlesini söylediği halde tool çağrısını atlayabilirse oturum açık
         // kalmasın. Tool gelirse timer temizlenir; gelmezse güvenli biçimde finalize edilir.
         if (/mülakat(ımız|ı)? (burada )?(sona er|bit)|görüşme(miz)? (burada )?(sona er|bit)/i.test(spoken)) {
